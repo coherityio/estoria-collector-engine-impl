@@ -32,7 +32,7 @@
 		</server>
 
 		<server>
-			<id>estoria-collector-engine-impl-repo</id>
+			<id>estoria-collector-engine-local-repo</id>
 			<username>${MAVEN_USERNAME}</username>
 			<password>${MAVEN_PASSWORD}</password>
 		</server>
@@ -96,9 +96,9 @@
 				</repository>
 
 				<repository>
-					<id>estoria-collector-engine-impl-repo</id>
-					<name>estoria-collector-engine-impl-repo</name>
-					<url>https://maven.pkg.github.com/coherityio/estoria-collector-engine-impl</url>
+					<id>estoria-collector-engine-local-repo</id>
+					<name>estoria-collector-engine-local-repo</name>
+					<url>https://maven.pkg.github.com/coherityio/estoria-collector-engine-local</url>
 					<releases>
 						<enabled>true</enabled>
 					</releases>

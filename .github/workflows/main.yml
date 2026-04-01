@@ -1,4 +1,4 @@
-name: Build and Publish Estoria Collector Engine Local
+name: Build and Publish Estoria Collector Engine Local 
 
 on:
   push:

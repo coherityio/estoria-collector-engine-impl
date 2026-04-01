@@ -11,7 +11,7 @@
     </parent>
 
     <groupId>io.coherity.estoria</groupId>
-    <artifactId>estoria-collector-engine-impl</artifactId>
+    <artifactId>estoria-collector-engine-local</artifactId>
     <version>1.0.0-SNAPSHOT</version>
     <packaging>jar</packaging>
     
@@ -19,21 +19,21 @@
     <description>Engine Implementation for all Estoria Collectors</description>
 
     <properties>
-        <project.repo.url>https://maven.pkg.github.com/coherityio/estoria-collector-engine-impl</project.repo.url>
+        <project.repo.url>https://maven.pkg.github.com/coherityio/estoria-collector-engine-local</project.repo.url>
         <slf4j.version>2.0.12</slf4j.version>
         <log4j2.version>2.23.1</log4j2.version>
     </properties>
 
 	<distributionManagement>
 		<repository>
-			<id>estoria-collector-engine-impl-repo</id>
+			<id>estoria-collector-engine-local-repo</id>
 			<name>Estoria Collector Impl Repo</name>
-			<url>https://maven.pkg.github.com/coherityio/estoria-collector-engine-impl</url>
+			<url>https://maven.pkg.github.com/coherityio/estoria-collector-engine-local</url>
 		</repository>
 		<snapshotRepository>
-			<id>estoria-collector-engine-impl-repo</id>
+			<id>estoria-collector-engine-local-repo</id>
 			<name>Estoria Collector Impl Snapshots Repo</name>
-			<url>https://maven.pkg.github.com/coherityio/estoria-collector-engine-impl</url>
+			<url>https://maven.pkg.github.com/coherityio/estoria-collector-engine-local</url>
 		</snapshotRepository>
 	</distributionManagement>
 
