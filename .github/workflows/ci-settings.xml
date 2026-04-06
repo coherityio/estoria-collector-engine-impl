@@ -18,25 +18,36 @@
 			<username>${MAVEN_USERNAME}</username>
 			<password>${MAVEN_PASSWORD}</password>
 		</server>
-
+		<server>
+			<id>coherity-common-repo</id>
+			<username>${MAVEN_USERNAME}</username>
+			<password>${MAVEN_PASSWORD}</password>
+		</server>
 		<server>
 			<id>estoria-collector-spi-repo</id>
 			<username>${MAVEN_USERNAME}</username>
 			<password>${MAVEN_PASSWORD}</password>
 		</server>
-
+		<server>
+			<id>estoria-collector-spi-repo</id>
+			<username>${MAVEN_USERNAME}</username>
+			<password>${MAVEN_PASSWORD}</password>
+		</server>
+		<server>
+			<id>estoria-collector-provider-aws-repo</id>
+			<username>${MAVEN_USERNAME}</username>
+			<password>${MAVEN_PASSWORD}</password>
+		</server>
 		<server>
 			<id>estoria-collector-engine-api-repo</id>
 			<username>${MAVEN_USERNAME}</username>
 			<password>${MAVEN_PASSWORD}</password>
 		</server>
-
 		<server>
 			<id>estoria-collector-engine-local-repo</id>
 			<username>${MAVEN_USERNAME}</username>
 			<password>${MAVEN_PASSWORD}</password>
 		</server>
-
 
 	</servers>
 
@@ -72,9 +83,33 @@
 				</repository>
 
 				<repository>
+					<id>coherity-common-repo</id>
+					<name>coherity-common-repo</name>
+					<url>https://maven.pkg.github.com/coherityio/coherity-common</url>
+					<releases>
+						<enabled>true</enabled>
+					</releases>
+					<snapshots>
+						<enabled>true</enabled>
+					</snapshots>
+				</repository>
+
+				<repository>
 					<id>estoria-collector-spi-repo</id>
 					<name>estoria-collector-spi-repo</name>
 					<url>https://maven.pkg.github.com/coherityio/estoria-collector-spi</url>
+					<releases>
+						<enabled>true</enabled>
+					</releases>
+					<snapshots>
+						<enabled>true</enabled>
+					</snapshots>
+				</repository>
+
+				<repository>
+					<id>estoria-collector-provider-aws-repo</id>
+					<name>estoria-collector-provider-aws-repo</name>
+					<url>https://maven.pkg.github.com/coherityio/estoria-collector-provider-aws</url>
 					<releases>
 						<enabled>true</enabled>
 					</releases>

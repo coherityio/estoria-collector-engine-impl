@@ -1,60 +1,63 @@
 package io.coherity.estoria.collector.engine.impl.dao;
 
-import java.sql.*;
+import java.sql.Connection;
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
+import java.sql.SQLException;
+import java.sql.Timestamp;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 import java.util.Optional;
+
+import javax.sql.DataSource;
+
+import io.coherity.estoria.collector.engine.impl.cli.ApplicationConfig;
 
 public class CollectionRunH2Dao implements CollectionRunDao
 {
-	private final String jdbcUrl = "jdbc:h2:./collector-db";
-	private final String user = "sa";
-	private final String password = "";
+	private final DataSource dataSource;
+
+	CollectionRunH2Dao(DataSource dataSource, SchemaInitializer schemaInitializer)
+	{
+		this.dataSource = Objects.requireNonNull(dataSource, "dataSource must not be null");
+		Objects.requireNonNull(schemaInitializer, "schemaInitializer must not be null").init();
+	}
+
+	CollectionRunH2Dao(String jdbcUrl, String user, String pass)
+	{
+		this(new SimpleDriverManagerDataSource(jdbcUrl, user, pass), H2DatabaseInitializer::init);
+	}
 
 	public CollectionRunH2Dao()
 	{
-		try (Connection conn = getConnection(); Statement stmt = conn.createStatement())
-		{
-			stmt.execute("""
-					    CREATE TABLE IF NOT EXISTS collection_run (
-					        run_id varchar(128) primary key,
-					        provider_id varchar(128) not null,
-					        collection_scope varchar(128) not null,
-					        status varchar(32) not null,
-					        run_start_time timestamp with time zone not null,
-					        run_end_time timestamp with time zone,
-					        total_collector_count bigint not null default 0,
-					        successful_collector_count bigint not null default 0,
-					        failed_collector_count bigint not null default 0,
-					        total_entity_count bigint not null default 0,
-					        failure_message clob,
-					        failure_exception_class varchar(512)
-					    )
-					""");
-		} catch (SQLException e)
-		{
-			throw new RuntimeException("Failed to initialize collection_run table", e);
-		}
+		this(
+			ApplicationConfig.getDBJDBCUrlString(),
+			ApplicationConfig.getDBUserString(),
+			ApplicationConfig.getDBPassString());
 	}
 
 	private Connection getConnection() throws SQLException
 	{
-		return DriverManager.getConnection(jdbcUrl, user, password);
+		return dataSource.getConnection();
 	}
-
+	
+	
+	
+	
 	@Override
 	public void save(CollectionRunEntity run)
 	{
 		String sql = """
-				    MERGE INTO collection_run (run_id, provider_id, collection_scope, status, run_start_time, run_end_time, total_collector_count, successful_collector_count, failed_collector_count, total_entity_count, failure_message, failure_exception_class)
+				    MERGE INTO collection_run (run_id, provider_id, provider_context, status, run_start_time, run_end_time, total_collector_count, successful_collector_count, failed_collector_count, total_entity_count, failure_message, failure_exception_class)
 				    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 				""";
 		try (Connection conn = getConnection(); PreparedStatement ps = conn.prepareStatement(sql))
 		{
 			ps.setString(1, run.getRunId());
 			ps.setString(2, run.getProviderId());
-			ps.setString(3, run.getCollectionScope());
+			ps.setString(3, run.getProviderContext());
 			ps.setString(4, run.getStatus());
 			ps.setTimestamp(5, Timestamp.from(run.getRunStartTime()));
 			ps.setTimestamp(6, run.getRunEndTime() != null ? Timestamp.from(run.getRunEndTime()) : null);
@@ -188,7 +191,7 @@ public class CollectionRunH2Dao implements CollectionRunDao
 		CollectionRunEntity entity = new CollectionRunEntity();
 		entity.setRunId(rs.getString("run_id"));
 		entity.setProviderId(rs.getString("provider_id"));
-		entity.setCollectionScope(rs.getString("collection_scope"));
+		entity.setProviderContext(rs.getString("provider_context"));
 		entity.setStatus(rs.getString("status"));
 		entity.setRunStartTime(rs.getTimestamp("run_start_time").toInstant());
 		Timestamp endTs = rs.getTimestamp("run_end_time");

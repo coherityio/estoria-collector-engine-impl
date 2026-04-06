@@ -4,7 +4,7 @@ create table if not exists collection_run
 (
     run_id varchar(128) primary key,
     provider_id varchar(128) not null,
-    collection_scope varchar(128) not null,
+    provider_context varchar(128) not null,
     status varchar(32) not null,
     run_start_time timestamp with time zone not null,
     run_end_time timestamp with time zone,
@@ -32,6 +32,7 @@ create table if not exists collection_result
     result_id varchar(128) primary key,
     run_id varchar(128) not null,
     collector_id varchar(128) not null,
+    collector_context varchar(128) not null,
     entity_type varchar(256) not null,
     status varchar(32) not null,
     entity_count bigint not null default 0,

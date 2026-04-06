@@ -2,6 +2,7 @@ package io.coherity.estoria.collector.engine.impl.domain;
 
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -9,13 +10,16 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 
+import org.apache.commons.lang3.StringUtils;
+import org.apache.commons.lang3.Validate;
+
 import io.coherity.estoria.collector.engine.api.CollectionExecutor;
 import io.coherity.estoria.collector.engine.api.CollectionPlan;
+import io.coherity.estoria.collector.engine.api.CollectionResult;
 import io.coherity.estoria.collector.engine.api.CollectionRun;
 import io.coherity.estoria.collector.engine.api.CollectionRunFailure;
 import io.coherity.estoria.collector.engine.api.CollectionRunStatus;
 import io.coherity.estoria.collector.engine.api.CollectionRunSummary;
-import io.coherity.estoria.collector.engine.api.CollectionResult;
 import io.coherity.estoria.collector.engine.api.ExecutionException;
 import io.coherity.estoria.collector.engine.impl.dao.CollectedEntityDao;
 import io.coherity.estoria.collector.engine.impl.dao.CollectedEntityEntity;
@@ -26,14 +30,17 @@ import io.coherity.estoria.collector.engine.impl.dao.CollectionResultH2Dao;
 import io.coherity.estoria.collector.engine.impl.dao.CollectionRunDao;
 import io.coherity.estoria.collector.engine.impl.dao.CollectionRunEntity;
 import io.coherity.estoria.collector.engine.impl.dao.CollectionRunH2Dao;
-import lombok.extern.slf4j.Slf4j;
+import io.coherity.estoria.collector.engine.impl.util.JsonSupport;
 import io.coherity.estoria.collector.spi.CloudEntity;
-import io.coherity.estoria.collector.spi.CollectionScope;
+import io.coherity.estoria.collector.spi.CloudProvider;
 import io.coherity.estoria.collector.spi.Collector;
+import io.coherity.estoria.collector.spi.CollectorContext;
 import io.coherity.estoria.collector.spi.CollectorCursor;
-import io.coherity.estoria.collector.spi.CollectorRequest;
+import io.coherity.estoria.collector.spi.CollectorRequestParameters;
 import io.coherity.estoria.collector.spi.EntityIdentifier;
+import io.coherity.estoria.collector.spi.ProviderContext;
 import io.coherity.estoria.collector.spi.ProviderSession;
+import lombok.extern.slf4j.Slf4j;
 
 /**
 	 * Thread-safe implementation of CollectionExecutor.
@@ -41,59 +48,41 @@ import io.coherity.estoria.collector.spi.ProviderSession;
 @Slf4j
 public class CollectionExecutorImpl implements CollectionExecutor
 {
-
-	private final Map<String, CollectorRegistry> loadedCollectorRegistryMap;
+	private final ProviderRegistry providerRegistry;
 	private final CollectionRunDao collectionRunDao;
 	private final CollectionResultDao collectionResultDao;
 	private final CollectedEntityDao collectedEntityDao;
 
-	public CollectionExecutorImpl(Map<String, CollectorRegistry> loadedCollectorRegistryMap)
-	{
-		this(loadedCollectorRegistryMap, new CollectionRunH2Dao(), new CollectionResultH2Dao(),
-			new CollectedEntityH2Dao());
-	}
-
-	public CollectionExecutorImpl(Map<String, CollectorRegistry> loadedCollectorRegistryMap,
+	public CollectionExecutorImpl(ProviderRegistry providerRegistry,
 		CollectionRunDao collectionRunDao,
 		CollectionResultDao collectionResultDao,
 		CollectedEntityDao collectedEntityDao)
 	{
-		this.loadedCollectorRegistryMap = loadedCollectorRegistryMap;
+		this.providerRegistry = providerRegistry;
 		this.collectionRunDao = collectionRunDao;
 		this.collectionResultDao = collectionResultDao;
 		this.collectedEntityDao = collectedEntityDao;
 	}
 
+	public CollectionExecutorImpl(ProviderRegistry providerRegistry)
+	{
+		this(providerRegistry, new CollectionRunH2Dao(), new CollectionResultH2Dao(), new CollectedEntityH2Dao());
+	}
+
 	@Override
-	public CollectionRun collect(CollectionPlan collectionPlan, ProviderSession session) throws ExecutionException
+	public CollectionRun collect(CollectionPlan collectionPlan, ProviderContext providerContext) throws ExecutionException
 	{
 		if (log.isDebugEnabled())
 		{
-			log.debug("Starting collection run for providerId={} with plan={} and session={}",
-				collectionPlan != null ? collectionPlan.getProviderId() : null,
+			log.debug("Starting collection run for with plan={} and providerContext={}",
 				collectionPlan,
-				session);
+				providerContext);
 		}
 
-		if (collectionPlan == null)
-		{
-			throw new IllegalArgumentException("collectionPlan cannot be null");
-		}
-
-		if (collectionPlan.getProviderId() == null || collectionPlan.getProviderId().isBlank())
-		{
-			throw new IllegalArgumentException("providerId cannot be null or empty");
-		}
-
-		if (collectionPlan.getCollectionScope() == null)
-		{
-			throw new IllegalArgumentException("collectionScope cannot be null");
-		}
-
-		if (session == null)
-		{
-			throw new IllegalArgumentException("session cannot be null");
-		}
+		Validate.notNull(collectionPlan, "required: collectionPlan");
+		Validate.notNull(providerContext, "required: providerContext");
+		
+		
 
 		List<String> executionOrder = collectionPlan.getEntityTypeExecutionOrder();
 		if (executionOrder == null || executionOrder.isEmpty())
@@ -101,8 +90,20 @@ public class CollectionExecutorImpl implements CollectionExecutor
 			throw new ExecutionException("Collection plan has no entity types");
 		}
 
-		CollectorRegistry collectorRegistry = getCollectorRegistry(collectionPlan.getProviderId());
-		CollectionScope scope = collectionPlan.getCollectionScope();
+		Optional<CloudProvider> opCloudProvider = this.providerRegistry.getLoadedCloudProvider(providerContext.getProviderId());
+		if(opCloudProvider.isEmpty())
+		{
+			throw new IllegalStateException("could not find cloud provider");
+		}
+		
+		Optional<CollectorRegistry> opCollectorRegistry = this.providerRegistry.getLoadedCollectorRegistry(providerContext.getProviderId());
+		if(opCollectorRegistry.isEmpty())
+		{
+			throw new IllegalStateException("could not find collector registry");
+		}
+		
+		//ProviderContext providerContext = collectionPlan.getProviderContext();
+		CollectorContext collectorContext = collectionPlan.getCollectorContext();
 		Set<String> skippedTypes = collectionPlan.getSkippedEntityTypes() != null
 			? new HashSet<>(collectionPlan.getSkippedEntityTypes())
 			: Set.of();
@@ -119,7 +120,7 @@ public class CollectionExecutorImpl implements CollectionExecutor
 		CollectionRunEntity runEntity = CollectionRunEntity.builder()
 			.runId(runId)
 			.providerId(collectionPlan.getProviderId())
-			.collectionScope(scope.toString())
+			.providerContext(JsonSupport.toJson(providerContext))
 			.status(CollectionRunStatus.RUNNING.name())
 			.runStartTime(runStartTime)
 			.runEndTime(null)
@@ -141,6 +142,12 @@ public class CollectionExecutorImpl implements CollectionExecutor
 		String runFailureMessage = null;
 		String runFailureExceptionClass = null;
 
+		ProviderSession providerSession = opCloudProvider.get().openSession(providerContext);
+		if(providerSession == null)
+		{
+			throw new ExecutionException("Could not open cloud provider session");
+		}
+		
 		for (String entityType : executionOrder)
 		{
 			if (entityType == null || entityType.isBlank())
@@ -162,8 +169,8 @@ public class CollectionExecutorImpl implements CollectionExecutor
 				continue;
 			}
 
-			Collector collector = collectorRegistry.getCollector(entityType);
-			if (collector == null)
+			Optional<Collector> opCollector = opCollectorRegistry.get().getCollector(entityType);
+			if (opCollector.isEmpty())
 			{
 				// Record a failed result for missing collector and continue.
 				log.warn("No collector registered for entityType={} and providerId={}; marking result FAILED and continuing",
@@ -176,6 +183,7 @@ public class CollectionExecutorImpl implements CollectionExecutor
 					.resultId(resultId)
 					.runId(runId)
 					.collectorId("<missing>")
+					.collectorContext(JsonSupport.toJson(collectorContext))
 					.entityType(entityType)
 					.status(CollectionRunStatus.FAILED.name())
 					.entityCount(0L)
@@ -211,17 +219,17 @@ public class CollectionExecutorImpl implements CollectionExecutor
 				log.debug("Starting collection for entityType={} in runId={}", entityType, runId);
 				while (true)
 				{
-					CollectorRequest request = CollectorRequest.builder()
-						.scope(scope)
+					CollectorRequestParameters requestPrams = CollectorRequestParameters.builder()
+						.collectorContext(collectorContext)
 						.cursorToken(cursorToken)
 						.pageSize(planPageSize)
 						.build();
 
-					CollectorCursor cursor = collector.collect(request);
+					CollectorCursor cursor = opCollector.get().collect(requestPrams, providerSession);
 					if (cursor == null)
 					{
-						log.warn("Collector {} returned null cursor for entityType={} in runId={}",
-							collector.getClass().getName(), entityType, runId);
+						log.debug("Collector {} returned null cursor for entityType={} in runId={}",
+								opCollector.get().getClass().getName(), entityType, runId);
 						break;
 					}
 
@@ -285,7 +293,8 @@ public class CollectionExecutorImpl implements CollectionExecutor
 			CollectionResultEntity resultEntity = CollectionResultEntity.builder()
 				.resultId(resultId)
 				.runId(runId)
-				.collectorId(collector.getClass().getName())
+				.collectorId(opCollector.get().getClass().getName())
+				.collectorContext(JsonSupport.toJson(collectorContext))
 				.entityType(entityType)
 				.status(resultStatus.name())
 				.entityCount(entityCount)
@@ -332,17 +341,17 @@ public class CollectionExecutorImpl implements CollectionExecutor
 		log.info("Collection run {} completed with status={} (totalCollectors={}, successes={}, failures={}, totalEntities={})",
 			runId, runStatus, totalCollectorCount, successfulCollectorCount, failedCollectorCount, totalEntityCount);
 
-		CollectionRunSummary summary = CollectionRunSummary.builder()
+		CollectionRunSummary collectionRunSummary = CollectionRunSummary.builder()
 			.totalCollectorCount(totalCollectorCount)
 			.successfulCollectorCount(successfulCollectorCount)
 			.failedCollectorCount(failedCollectorCount)
 			.totalEntityCount(totalEntityCount)
 			.build();
 
-		CollectionRunFailure failure = null;
+		CollectionRunFailure collectionRunFailure = null;
 		if (runFailureMessage != null && !runFailureMessage.isBlank())
 		{
-			failure = CollectionRunFailure.builder()
+			collectionRunFailure = CollectionRunFailure.builder()
 				.message(runFailureMessage)
 				.exceptionClassName(runFailureExceptionClass)
 				.build();
@@ -351,27 +360,55 @@ public class CollectionExecutorImpl implements CollectionExecutor
 		List<CollectionResult> results = new ArrayList<>();
 		for (CollectionResultEntity resultEntity : collectionResultDao.findByRunId(runId))
 		{
-			results.add(new DaoCollectionResult(resultEntity.getResultId(), collectionResultDao, collectedEntityDao));
+			results.add(new DaoBackedCollectionResult(resultEntity, collectedEntityDao));
 		}
-
-		return new InMemoryCollectionRun(runId, collectionPlan.getProviderId(), scope, runStartTime, runEndTime,
-			runStatus, failure, summary, results);
+		
+		return new DaoBackedCollectionRun(runEntity, null, collectionRunSummary, collectionRunFailure);
 	}
 
-	private CollectorRegistry getCollectorRegistry(String providerId) throws ExecutionException
+	
+	@Override
+	public CollectionRun getCollectedRun(String runId) throws ExecutionException
 	{
-		if (loadedCollectorRegistryMap == null || loadedCollectorRegistryMap.isEmpty())
+		Validate.notEmpty(runId);
+		Optional<CollectionRunEntity> opCollectionRunEntity = this.collectionRunDao.findById(runId);
+		if(opCollectionRunEntity.isEmpty())
 		{
-			throw new ExecutionException("No collector registries loaded");
+			return null;
 		}
+		
+		List<CollectionResultEntity> collectionResultEntities = this.collectionResultDao.findByRunId(runId);
+		Map<String, CollectionResult> collectionResultMap = null;
+		if(collectionResultEntities != null)
+		{
+			collectionResultMap = new HashMap<String, CollectionResult>();
+			CollectionResult collectionResult = null;
+			for(CollectionResultEntity collectionResultEntity : collectionResultEntities)
+			{
+				collectionResult = new DaoBackedCollectionResult(collectionResultEntity, this.collectedEntityDao);
+				collectionResultMap.put(collectionResultEntity.getEntityType(), collectionResult);
+			}
+		}
+		
+		CollectionRunSummary collectionRunSummary = CollectionRunSummary.builder()
+			.totalCollectorCount(opCollectionRunEntity.get().getTotalCollectorCount())
+			.successfulCollectorCount(opCollectionRunEntity.get().getSuccessfulCollectorCount())
+			.failedCollectorCount(opCollectionRunEntity.get().getFailedCollectorCount())
+			.totalEntityCount(opCollectionRunEntity.get().getTotalEntityCount())
+			.build();
 
-		CollectorRegistry collectorRegistry = loadedCollectorRegistryMap.get(providerId);
-		if (collectorRegistry == null)
+		CollectionRunFailure collectionRunFailure = null;
+		if (StringUtils.isNotEmpty(opCollectionRunEntity.get().getFailureMessage()))
 		{
-			throw new ExecutionException("No collector registry found for provider '" + providerId + "'");
+			collectionRunFailure = CollectionRunFailure.builder()
+				.message(opCollectionRunEntity.get().getFailureMessage())
+				.exceptionClassName(opCollectionRunEntity.get().getFailureExceptionClass())
+				.build();
 		}
-		return collectorRegistry;
+		
+		return new DaoBackedCollectionRun(opCollectionRunEntity.get(), collectionResultMap, collectionRunSummary, collectionRunFailure);
 	}
+
 
 
 }

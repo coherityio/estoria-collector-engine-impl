@@ -4,33 +4,56 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 
+import org.apache.commons.lang3.Validate;
+
 import io.coherity.estoria.collector.engine.api.CloudEntityPage;
 import io.coherity.estoria.collector.engine.api.CollectionFailure;
 import io.coherity.estoria.collector.engine.api.CollectionResult;
 import io.coherity.estoria.collector.engine.api.CollectionSummary;
 import io.coherity.estoria.collector.engine.impl.dao.CollectedEntityDao;
 import io.coherity.estoria.collector.engine.impl.dao.CollectedEntityEntity;
-import io.coherity.estoria.collector.engine.impl.dao.CollectionResultDao;
 import io.coherity.estoria.collector.engine.impl.dao.CollectionResultEntity;
+import io.coherity.estoria.collector.engine.impl.util.JsonSupport;
 import io.coherity.estoria.collector.spi.CloudEntity;
+import io.coherity.estoria.collector.spi.CollectorContext;
 import io.coherity.estoria.collector.spi.EntityIdentifier;
 
-public class DaoCollectionResult implements CollectionResult
+public class DaoBackedCollectionResult implements CollectionResult
 {
 	private static final int DEFAULT_PAGE_SIZE = 100;
 
-	private final String resultId;
+//	private final String resultId;
 	private final CollectedEntityDao collectedEntityDao;
 	private final CollectionResultEntity resultEntity;
 
-	public DaoCollectionResult(String resultId, CollectionResultDao collectionResultDao, CollectedEntityDao collectedEntityDao)
+	public DaoBackedCollectionResult(CollectionResultEntity resultEntity, CollectedEntityDao collectedEntityDao)
 	{
-		this.resultId = resultId;
+//		this.resultId = resultId;
 		this.collectedEntityDao = collectedEntityDao;
-		this.resultEntity = collectionResultDao.findById(resultId)
-			.orElseThrow(() -> new IllegalArgumentException("No collection result found for id " + resultId));
+		Validate.notNull(resultEntity, "required: resultEntity");
+		Validate.notEmpty(resultEntity.getResultId(), "required: resultEntity.resultId");
+		this.resultEntity = resultEntity;
 	}
 
+	@Override
+	public String getResultId()
+	{
+		return resultEntity.getResultId();
+	}
+
+	@Override
+	public String getCollectorId()
+	{
+		return resultEntity.getEntityType();
+	}
+
+	@Override
+	public CollectorContext getCollectorContext()
+	{
+		//TODO: cache result so not multiple calls to deserializer
+		return JsonSupport.fromJson(resultEntity.getCollectorContext(), CollectorContext.class);
+	}
+	
 	@Override
 	public String getEntityType()
 	{
@@ -102,7 +125,7 @@ public class DaoCollectionResult implements CollectionResult
 			}
 		}
 
-		List<CollectedEntityEntity> storedEntities = collectedEntityDao.findPageByResultId(resultId, offset,
+		List<CollectedEntityEntity> storedEntities = collectedEntityDao.findPageByResultId(this.resultEntity.getResultId(), offset,
 			effectivePageSize);
 		List<CloudEntity> cloudEntities = new ArrayList<>(storedEntities.size());
 
@@ -136,4 +159,5 @@ public class DaoCollectionResult implements CollectionResult
 			.nextCursorToken(nextCursorToken)
 			.build();
 	}
+
 }

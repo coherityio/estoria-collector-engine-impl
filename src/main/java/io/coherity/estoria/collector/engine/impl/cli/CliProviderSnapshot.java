@@ -3,7 +3,7 @@ package io.coherity.estoria.collector.engine.impl.cli;
 import io.coherity.estoria.collector.engine.api.CloudEntityPage;
 import io.coherity.estoria.collector.engine.api.ProviderSnapshot;
 import io.coherity.estoria.collector.engine.api.ProviderSnapshotSummary;
-import io.coherity.estoria.collector.spi.CollectionScope;
+import io.coherity.estoria.collector.spi.CollectorContext;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
@@ -17,7 +17,7 @@ import lombok.NoArgsConstructor;
 public class CliProviderSnapshot implements ProviderSnapshot
 {
     private String providerId;
-    private CollectionScope collectionScope;
+    private CollectorContext collectionScope;
     private ProviderSnapshotSummary providerSnapshotSummary;
 
     @Override
@@ -27,7 +27,7 @@ public class CliProviderSnapshot implements ProviderSnapshot
     }
 
     @Override
-    public CollectionScope getCollectionScope()
+    public CollectorContext getCollectionScope()
     {
         return collectionScope;
     }

@@ -22,6 +22,8 @@
         <project.repo.url>https://maven.pkg.github.com/coherityio/estoria-collector-engine-local</project.repo.url>
         <slf4j.version>2.0.12</slf4j.version>
         <log4j2.version>2.23.1</log4j2.version>
+        <coherity-common.version>1.0.0-SNAPSHOT</coherity-common.version>
+        <estoria.version>1.0.0-SNAPSHOT</estoria.version>
     </properties>
 
 	<distributionManagement>
@@ -39,16 +41,31 @@
 
     <dependencies>
 
+		<dependency>
+			<groupId>org.apache.commons</groupId>
+			<artifactId>commons-lang3</artifactId>
+		</dependency>
+
         <!-- Estoria Collector -->
+        <dependency>
+            <groupId>io.coherity.shared</groupId>
+            <artifactId>coherity-common</artifactId>
+            <version>${coherity-common.version}</version>
+        </dependency>
         <dependency>
             <groupId>io.coherity.estoria</groupId>
             <artifactId>estoria-collector-spi</artifactId>
-            <version>1.0.0-SNAPSHOT</version>
+            <version>${estoria.version}</version>
         </dependency>
         <dependency>
             <groupId>io.coherity.estoria</groupId>
             <artifactId>estoria-collector-engine-api</artifactId>
-            <version>1.0.0-SNAPSHOT</version>
+            <version>${estoria.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>io.coherity.estoria.provider</groupId>
+            <artifactId>estoria-collector-provider-aws</artifactId>
+            <version>${estoria.version}</version>
         </dependency>
 
         <!-- Lombok -->
@@ -93,13 +110,78 @@
             <version>2.17.1</version>
         </dependency>
         
-        <!-- Test Dependencies -->
-		
-		
+        <!-- H2 database for local persistence -->
+        <dependency>
+            <groupId>com.h2database</groupId>
+            <artifactId>h2</artifactId>
+            <version>2.2.224</version>
+        </dependency>
+
+
+		<!-- ================================================== -->
+		<!-- Runtime Dependencies -->
+		<!-- ================================================== -->
+		<dependency>
+			<groupId>commons-beanutils</groupId>
+			<artifactId>commons-beanutils</artifactId>
+			<scope>runtime</scope>
+		</dependency>
+
+		<dependency>
+			<groupId>org.yaml</groupId>
+			<artifactId>snakeyaml</artifactId>
+			<scope>runtime</scope>
+		</dependency>
+
+
+		<!-- ================================================== -->
+		<!-- Test Dependencies -->
+		<!-- ================================================== -->
+		<dependency>
+			<groupId>org.junit.jupiter</groupId>
+			<artifactId>junit-jupiter</artifactId>
+			<scope>test</scope>
+		</dependency>
+
+		<!-- Mockito with JUnit 5 support -->
+		<dependency>
+			<groupId>org.mockito</groupId>
+			<artifactId>mockito-junit-jupiter</artifactId>
+			<scope>test</scope>
+		</dependency>
+
+		<!-- Fluent assertions (highly recommended) -->
+		<dependency>
+			<groupId>org.assertj</groupId>
+			<artifactId>assertj-core</artifactId>
+			<scope>test</scope>
+		</dependency>
+	
     </dependencies>
     
     <build>
         <plugins>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-assembly-plugin</artifactId>
+                <version>3.6.0</version>
+                <configuration>
+                    <descriptors>
+                        <descriptor>src/assembly/distribution.xml</descriptor>
+                    </descriptors>
+                    <finalName>${project.artifactId}-${project.version}</finalName>
+                    <appendAssemblyId>true</appendAssemblyId>
+                </configuration>
+                <executions>
+                    <execution>
+                        <id>make-distribution</id>
+                        <phase>package</phase>
+                        <goals>
+                            <goal>single</goal>
+                        </goals>
+                    </execution>
+                </executions>
+            </plugin>
         </plugins>
     </build>
 

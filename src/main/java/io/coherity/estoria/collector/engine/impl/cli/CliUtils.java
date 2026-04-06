@@ -1,17 +1,16 @@
 package io.coherity.estoria.collector.engine.impl.cli;
 
-import io.coherity.estoria.collector.engine.api.CollectorEngine;
-import io.coherity.estoria.collector.engine.impl.domain.CollectorEngineImpl;
-import io.coherity.estoria.collector.spi.CloudProvider;
-
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Arrays;
-import java.util.ServiceLoader;
 import java.util.Set;
 import java.util.stream.Collectors;
+
+import io.coherity.estoria.collector.engine.api.CollectorEngine;
+import io.coherity.estoria.collector.engine.impl.domain.CollectorEngineImpl;
+import io.coherity.estoria.collector.engine.impl.util.JsonSupport;
 
 final class CliUtils
 {
@@ -24,19 +23,6 @@ final class CliUtils
         return CollectorEngineImpl.getInstance();
     }
 
-    static CloudProvider loadProvider(String providerId)
-    {
-        ServiceLoader<CloudProvider> loader = ServiceLoader.load(CloudProvider.class);
-        for (CloudProvider p : loader)
-        {
-            if (providerId.equals(p.getId()))
-            {
-                return p;
-            }
-        }
-        throw new IllegalArgumentException("No CloudProvider found for id: " + providerId);
-    }
-
     static <T> T readJsonIfPresent(String file, Class<T> type) throws IOException
     {
         if (file == null)
@@ -44,7 +30,7 @@ final class CliUtils
             return null;
         }
         String json = readAllFromFile(file);
-        return JsonUtil.fromJson(json, type);
+        return JsonSupport.fromJson(json, type);
     }
 
     static String readAllFromFile(String path) throws IOException

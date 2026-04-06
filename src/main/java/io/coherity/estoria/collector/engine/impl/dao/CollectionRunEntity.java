@@ -15,7 +15,7 @@ public class CollectionRunEntity
 {
 	private String runId;
 	private String providerId;
-	private String collectionScope;
+	private String providerContext;
 	private String status;
 	private Instant runStartTime;
 	private Instant runEndTime;

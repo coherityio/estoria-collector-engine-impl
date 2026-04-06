@@ -1,40 +1,45 @@
 package io.coherity.estoria.collector.engine.impl.dao;
 
-import java.sql.*;
+import java.sql.Connection;
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
+import java.sql.SQLException;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.List;
+import java.util.Objects;
+
+import javax.sql.DataSource;
+
+import io.coherity.estoria.collector.engine.impl.cli.ApplicationConfig;
 
 public class CollectedEntityH2Dao implements CollectedEntityDao
 {
-	private final String jdbcUrl = "jdbc:h2:./collector-db";
-	private final String user = "sa";
-	private final String password = "";
+	private final DataSource dataSource;
+
+	CollectedEntityH2Dao(DataSource dataSource, SchemaInitializer schemaInitializer)
+	{
+		this.dataSource = Objects.requireNonNull(dataSource, "dataSource must not be null");
+		Objects.requireNonNull(schemaInitializer, "schemaInitializer must not be null").init();
+	}
+
+	CollectedEntityH2Dao(String jdbcUrl, String user, String pass)
+	{
+		this(new SimpleDriverManagerDataSource(jdbcUrl, user, pass), H2DatabaseInitializer::init);
+	}
 
 	public CollectedEntityH2Dao()
 	{
-		try (Connection conn = getConnection(); Statement stmt = conn.createStatement())
-		{
-			stmt.execute("""
-					    CREATE TABLE IF NOT EXISTS collected_entity (
-					        result_id varchar(128) not null,
-					        entity_ordinal bigint not null,
-					        entity_id varchar(512),
-					        entity_type varchar(256) not null,
-					        payload_json clob not null,
-					        constraint pk_collected_entity primary key (result_id, entity_ordinal)
-					    )
-					""");
-		} catch (SQLException e)
-		{
-			throw new RuntimeException("Failed to initialize collected_entity table", e);
-		}
+		this(
+			ApplicationConfig.getDBJDBCUrlString(),
+			ApplicationConfig.getDBUserString(),
+			ApplicationConfig.getDBPassString());
 	}
 
 	private Connection getConnection() throws SQLException
 	{
-		return DriverManager.getConnection(jdbcUrl, user, password);
+		return dataSource.getConnection();
 	}
 
 	@Override
@@ -56,10 +61,12 @@ public class CollectedEntityH2Dao implements CollectedEntityDao
 		}
 
 		String sql = """
-				    MERGE INTO collected_entity (result_id, entity_ordinal, entity_id, entity_type, payload_json)
-				    VALUES (?, ?, ?, ?, ?)
-				""";
-		try (Connection conn = getConnection(); PreparedStatement ps = conn.prepareStatement(sql))
+				MERGE INTO collected_entity (result_id, entity_ordinal, entity_id, entity_type, payload_json)
+				VALUES (?, ?, ?, ?, ?)
+			""";
+
+		try (Connection conn = getConnection();
+			PreparedStatement ps = conn.prepareStatement(sql))
 		{
 			boolean originalAutoCommit = conn.getAutoCommit();
 			conn.setAutoCommit(false);
@@ -71,6 +78,7 @@ public class CollectedEntityH2Dao implements CollectedEntityDao
 					{
 						continue;
 					}
+
 					ps.setString(1, entity.getResultId());
 					ps.setLong(2, entity.getEntityOrdinal());
 					ps.setString(3, entity.getEntityId());
@@ -103,18 +111,24 @@ public class CollectedEntityH2Dao implements CollectedEntityDao
 	{
 		String sql = "SELECT * FROM collected_entity WHERE result_id = ? ORDER BY entity_ordinal";
 		List<CollectedEntityEntity> results = new ArrayList<>();
-		try (Connection conn = getConnection(); PreparedStatement ps = conn.prepareStatement(sql))
+
+		try (Connection conn = getConnection();
+			PreparedStatement ps = conn.prepareStatement(sql))
 		{
 			ps.setString(1, resultId);
-			ResultSet rs = ps.executeQuery();
-			while (rs.next())
+			try (ResultSet rs = ps.executeQuery())
 			{
-				results.add(mapRow(rs));
+				while (rs.next())
+				{
+					results.add(mapRow(rs));
+				}
 			}
-		} catch (SQLException e)
+		}
+		catch (SQLException e)
 		{
 			throw new RuntimeException("Failed to find CollectedEntityEntity by resultId", e);
 		}
+
 		return results;
 	}
 
@@ -123,21 +137,27 @@ public class CollectedEntityH2Dao implements CollectedEntityDao
 	{
 		String sql = "SELECT * FROM collected_entity WHERE result_id = ? ORDER BY entity_ordinal LIMIT ? OFFSET ?";
 		List<CollectedEntityEntity> results = new ArrayList<>();
-		try (Connection conn = getConnection(); PreparedStatement ps = conn.prepareStatement(sql))
+
+		try (Connection conn = getConnection();
+			PreparedStatement ps = conn.prepareStatement(sql))
 		{
 			ps.setString(1, resultId);
 			ps.setInt(2, limit);
 			ps.setLong(3, offset);
-			ResultSet rs = ps.executeQuery();
-			while (rs.next())
+
+			try (ResultSet rs = ps.executeQuery())
 			{
-				results.add(mapRow(rs));
+				while (rs.next())
+				{
+					results.add(mapRow(rs));
+				}
 			}
 		}
 		catch (SQLException e)
 		{
 			throw new RuntimeException("Failed to page CollectedEntityEntity by resultId", e);
 		}
+
 		return results;
 	}
 
@@ -152,20 +172,28 @@ public class CollectedEntityH2Dao implements CollectedEntityDao
 				WHERE r.provider_id = ? AND ce.entity_type = ?
 				ORDER BY r.run_start_time, cr.collection_start_time, ce.entity_ordinal
 			""";
+
 		List<CollectedEntityEntity> results = new ArrayList<>();
-		try (Connection conn = getConnection(); PreparedStatement ps = conn.prepareStatement(sql))
+
+		try (Connection conn = getConnection();
+			PreparedStatement ps = conn.prepareStatement(sql))
 		{
 			ps.setString(1, providerId);
 			ps.setString(2, entityType);
-			ResultSet rs = ps.executeQuery();
-			while (rs.next())
+
+			try (ResultSet rs = ps.executeQuery())
 			{
-				results.add(mapRow(rs));
+				while (rs.next())
+				{
+					results.add(mapRow(rs));
+				}
 			}
-		} catch (SQLException e)
+		}
+		catch (SQLException e)
 		{
 			throw new RuntimeException("Failed to find CollectedEntityEntity by providerId and entityType", e);
 		}
+
 		return results;
 	}
 
@@ -173,11 +201,14 @@ public class CollectedEntityH2Dao implements CollectedEntityDao
 	public void deleteByResultId(String resultId)
 	{
 		String sql = "DELETE FROM collected_entity WHERE result_id = ?";
-		try (Connection conn = getConnection(); PreparedStatement ps = conn.prepareStatement(sql))
+
+		try (Connection conn = getConnection();
+			PreparedStatement ps = conn.prepareStatement(sql))
 		{
 			ps.setString(1, resultId);
 			ps.executeUpdate();
-		} catch (SQLException e)
+		}
+		catch (SQLException e)
 		{
 			throw new RuntimeException("Failed to delete CollectedEntityEntity by resultId", e);
 		}
@@ -193,4 +224,6 @@ public class CollectedEntityH2Dao implements CollectedEntityDao
 		entity.setPayloadJson(rs.getString("payload_json"));
 		return entity;
 	}
+
+
 }

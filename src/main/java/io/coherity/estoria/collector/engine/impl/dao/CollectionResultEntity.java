@@ -16,6 +16,7 @@ public class CollectionResultEntity
 	private String resultId;
 	private String runId;
 	private String collectorId;
+	private String collectorContext;
 	private String entityType;
 	private String status;
 	private long entityCount;

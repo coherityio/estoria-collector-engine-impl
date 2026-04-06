@@ -1,66 +1,69 @@
 package io.coherity.estoria.collector.engine.impl.dao;
 
-import java.sql.*;
-import java.time.Instant;
+import java.sql.Connection;
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
+import java.sql.SQLException;
+import java.sql.Timestamp;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 import java.util.Optional;
+
+import javax.sql.DataSource;
+
+import io.coherity.estoria.collector.engine.impl.cli.ApplicationConfig;
 
 public class CollectionResultH2Dao implements CollectionResultDao
 {
-	private final String jdbcUrl = "jdbc:h2:./collector-db";
-	private final String user = "sa";
-	private final String password = "";
+	private final DataSource dataSource;
+
+	CollectionResultH2Dao(DataSource dataSource, SchemaInitializer schemaInitializer)
+	{
+		this.dataSource = Objects.requireNonNull(dataSource, "dataSource must not be null");
+		Objects.requireNonNull(schemaInitializer, "schemaInitializer must not be null").init();
+	}
+
+	CollectionResultH2Dao(String jdbcUrl, String user, String pass)
+	{
+		this(new SimpleDriverManagerDataSource(jdbcUrl, user, pass), H2DatabaseInitializer::init);
+	}
 
 	public CollectionResultH2Dao()
 	{
-		try (Connection conn = getConnection(); Statement stmt = conn.createStatement())
-		{
-			stmt.execute("""
-					    CREATE TABLE IF NOT EXISTS collection_result (
-					        result_id varchar(128) primary key,
-					        run_id varchar(128) not null,
-					        collector_id varchar(128) not null,
-					        entity_type varchar(256) not null,
-					        status varchar(32) not null,
-					        entity_count bigint not null default 0,
-					        collection_start_time timestamp with time zone not null,
-					        collection_end_time timestamp with time zone,
-					        failure_message clob,
-					        failure_exception_class varchar(512)
-					    )
-					""");
-		} catch (SQLException e)
-		{
-			throw new RuntimeException("Failed to initialize collection_result table", e);
-		}
+		this(
+			ApplicationConfig.getDBJDBCUrlString(),
+			ApplicationConfig.getDBUserString(),
+			ApplicationConfig.getDBPassString());
 	}
 
 	private Connection getConnection() throws SQLException
 	{
-		return DriverManager.getConnection(jdbcUrl, user, password);
+		return dataSource.getConnection();
 	}
 
+	
 	@Override
 	public void save(CollectionResultEntity result)
 	{
 		String sql = """
-				    MERGE INTO collection_result (result_id, run_id, collector_id, entity_type, status, entity_count, collection_start_time, collection_end_time, failure_message, failure_exception_class)
-				    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+				    MERGE INTO collection_result (result_id, run_id, collector_id, collector_context, entity_type, status, entity_count, collection_start_time, collection_end_time, failure_message, failure_exception_class)
+				    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 				""";
 		try (Connection conn = getConnection(); PreparedStatement ps = conn.prepareStatement(sql))
 		{
 			ps.setString(1, result.getResultId());
 			ps.setString(2, result.getRunId());
 			ps.setString(3, result.getCollectorId());
-			ps.setString(4, result.getEntityType());
-			ps.setString(5, result.getStatus());
-			ps.setLong(6, result.getEntityCount());
-			ps.setTimestamp(7, Timestamp.from(result.getCollectionStartTime()));
-			ps.setTimestamp(8,
+			ps.setString(4, result.getCollectorContext());
+			ps.setString(5, result.getEntityType());
+			ps.setString(6, result.getStatus());
+			ps.setLong(7, result.getEntityCount());
+			ps.setTimestamp(8, Timestamp.from(result.getCollectionStartTime()));
+			ps.setTimestamp(9,
 					result.getCollectionEndTime() != null ? Timestamp.from(result.getCollectionEndTime()) : null);
-			ps.setString(9, result.getFailureMessage());
-			ps.setString(10, result.getFailureExceptionClass());
+			ps.setString(10, result.getFailureMessage());
+			ps.setString(11, result.getFailureExceptionClass());
 			ps.executeUpdate();
 		} catch (SQLException e)
 		{
@@ -184,6 +187,7 @@ public class CollectionResultH2Dao implements CollectionResultDao
 		entity.setResultId(rs.getString("result_id"));
 		entity.setRunId(rs.getString("run_id"));
 		entity.setCollectorId(rs.getString("collector_id"));
+		entity.setCollectorContext(rs.getString("collector_context"));
 		entity.setEntityType(rs.getString("entity_type"));
 		entity.setStatus(rs.getString("status"));
 		entity.setEntityCount(rs.getLong("entity_count"));

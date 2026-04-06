@@ -6,8 +6,14 @@
         </Console>
     </Appenders>
 
-    <!-- Default root logger at INFO level -->
+    <!-- Loggers -->
     <Loggers>
+        <!-- Package-level logger for collector components at DEBUG -->
+        <Logger name="io.coherity.estoria.collector" level="debug" additivity="false">
+            <AppenderRef ref="Console"/>
+        </Logger>
+
+        <!-- Default root logger at INFO level -->
         <Root level="info">
             <AppenderRef ref="Console"/>
         </Root>

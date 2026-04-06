@@ -2,6 +2,7 @@ package io.coherity.estoria.collector.engine.impl.cli;
 
 import java.io.IOException;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 
@@ -12,25 +13,27 @@ import org.apache.commons.cli.HelpFormatter;
 import org.apache.commons.cli.Option;
 import org.apache.commons.cli.Options;
 import org.apache.commons.cli.ParseException;
+import org.apache.commons.lang3.StringUtils;
 
 import io.coherity.estoria.collector.engine.api.CollectionExecutor;
-import io.coherity.estoria.collector.engine.api.CollectionPlanner;
-import io.coherity.estoria.collector.engine.api.CollectorEngine;
-import io.coherity.estoria.collector.engine.api.SnapshotBuilder;
 import io.coherity.estoria.collector.engine.api.CollectionPlan;
+import io.coherity.estoria.collector.engine.api.CollectionPlanner;
 import io.coherity.estoria.collector.engine.api.CollectionResult;
 import io.coherity.estoria.collector.engine.api.CollectionRun;
 import io.coherity.estoria.collector.engine.api.CollectionRunSummary;
+import io.coherity.estoria.collector.engine.api.CollectorEngine;
+import io.coherity.estoria.collector.engine.api.SnapshotBuilder;
 import io.coherity.estoria.collector.engine.impl.dao.CollectedEntityH2Dao;
 import io.coherity.estoria.collector.engine.impl.dao.CollectionResultEntity;
 import io.coherity.estoria.collector.engine.impl.dao.CollectionResultH2Dao;
 import io.coherity.estoria.collector.engine.impl.dao.CollectionRunEntity;
 import io.coherity.estoria.collector.engine.impl.dao.CollectionRunH2Dao;
-import io.coherity.estoria.collector.engine.impl.domain.DaoCollectionResult;
-import io.coherity.estoria.collector.spi.CollectionScope;
+import io.coherity.estoria.collector.engine.impl.domain.DaoBackedCollectionResult;
+import io.coherity.estoria.collector.engine.impl.util.JsonSupport;
 import io.coherity.estoria.collector.spi.CloudProvider;
+import io.coherity.estoria.collector.spi.Collector;
+import io.coherity.estoria.collector.spi.CollectorContext;
 import io.coherity.estoria.collector.spi.ProviderContext;
-import io.coherity.estoria.collector.spi.ProviderSession;
 import lombok.extern.slf4j.Slf4j;
 
 @Slf4j
@@ -61,6 +64,8 @@ public class Main
 				case "plan" -> new PlanCommand().run(commandArgs);
 				case "execute" -> new ExecuteCommand().run(commandArgs);
 				case "snapshot" -> new SnapshotCommand().run(commandArgs);
+				case "providers" -> new ProvidersCommand().run(commandArgs);
+				case "collectors" -> new CollectorsCommand().run(commandArgs);
 				case "-h", "--help", "help" -> {
 					printGlobalHelp();
 					yield 0;
@@ -87,18 +92,127 @@ public class Main
 	private void printGlobalHelp()
 	{
 		System.out.println("""
-			Usage: collector-cli <command> [options]
+			Usage: collector <command> [options]
 			  Commands:
 			    plan      Build a collection plan and optionally write it as JSON.
 			    execute   Execute a collection plan from JSON (file or stdin).
 			    snapshot  Build a provider snapshot for a given runId.
+			    providers List all loaded cloud providers.
+			    collectors List collectors for a given provider.
 
 			  Use:
-			    collector-cli plan --help
-			    collector-cli execute --help
-			    collector-cli snapshot --help
+			    collector plan --help
+			    collector execute --help
+			    collector snapshot --help
+			    collector providers
+			    collector collectors --help
 			  for command-specific options.
 			""");
+	}
+
+	// Simple DTOs for JSON output
+	private record ProviderInfo(String id, String version, String name, Map<String, Object> attributes)
+	{
+		static ProviderInfo from(CloudProvider provider)
+		{
+			return new ProviderInfo(
+				provider.getId(),
+				provider.getVersion(),
+				provider.getName(),
+				provider.getAttributes());
+		}
+	}
+
+	private record CollectorInfo(String providerId, String entityType, Set<String> requiresEntityTypes,
+		Set<String> tags)
+	{
+		static CollectorInfo from(Collector collector)
+		{
+			return new CollectorInfo(
+				collector.getProviderId(),
+				collector.getEntityType(),
+				collector.requiresEntityTypes(),
+				collector.getTags());
+		}
+	}
+
+	@Slf4j
+	static class ProvidersCommand
+	{
+		int run(String[] args) throws Exception
+		{
+			Options options = new Options();
+			options.addOption(Option.builder("h")
+				.longOpt("help")
+				.desc("Show help")
+				.build());
+
+			CommandLineParser parser = new DefaultParser();
+			CommandLine cmd = parser.parse(options, args);
+
+			if (cmd.hasOption("help"))
+			{
+				HelpFormatter hf = new HelpFormatter();
+				hf.printHelp("collector providers", options, true);
+				return 0;
+			}
+
+			CollectorEngine engine = CliUtils.createEngine();
+			List<CloudProvider> providers = engine.getLoadedCloudProviders();
+			List<ProviderInfo> infos = providers.stream()
+				.map(ProviderInfo::from)
+				.toList();
+
+			System.out.println(JsonSupport.toJson(infos));
+			return 0;
+		}
+	}
+
+	@Slf4j
+	static class CollectorsCommand
+	{
+		int run(String[] args) throws Exception
+		{
+			Options options = new Options();
+			options.addOption(Option.builder("p")
+				.longOpt("provider-id")
+				.hasArg()
+				.argName("ID")
+				.desc("Provider identifier (required)")
+				.build());
+			options.addOption(Option.builder("h")
+				.longOpt("help")
+				.desc("Show help")
+				.build());
+
+			CommandLineParser parser = new DefaultParser();
+			CommandLine cmd = parser.parse(options, args);
+
+			if (cmd.hasOption("help"))
+			{
+				HelpFormatter hf = new HelpFormatter();
+				hf.printHelp("collector collectors", options, true);
+				return 0;
+			}
+
+			String providerId = cmd.getOptionValue("provider-id");
+			if (providerId == null || providerId.isBlank())
+			{
+				System.err.println("Missing required option: --provider-id");
+				HelpFormatter hf = new HelpFormatter();
+				hf.printHelp("collector collectors", options, true);
+				return 1;
+			}
+
+			CollectorEngine engine = CliUtils.createEngine();
+			List<Collector> collectors = engine.getLoadedCollectors(providerId);
+			List<CollectorInfo> infos = collectors.stream()
+				.map(CollectorInfo::from)
+				.toList();
+
+			System.out.println(JsonSupport.toJson(infos));
+			return 0;
+		}
 	}
 
 	@Slf4j
@@ -112,20 +226,19 @@ public class Main
 				.hasArg()
 				.argName("ID")
 				.desc("Provider identifier (required)")
-				.required()
 				.build());
-			options.addOption(Option.builder("s")
-				.longOpt("scope-file")
+			options.addOption(Option.builder("ccf")
+				.longOpt("collector-context-file")
 				.hasArg()
-				.argName("FILE")
-				.desc("Path to JSON file containing CollectionScope")
+				.argName("CCFILE")
+				.desc("Path to JSON file containing CollectorContext")
 				.build());
 			options.addOption(Option.builder()
-				.longOpt("provider-arg")
+				.longOpt("collector-arg")
 				.hasArgs()
 				.valueSeparator('=')
 				.argName("key=value")
-				.desc("Provider or scope argument as key=value (may be repeated)")
+				.desc("Collector argument as key=value (may be repeated)")
 				.build());
 			options.addOption(Option.builder("t")
 				.longOpt("target-types")
@@ -160,12 +273,19 @@ public class Main
 			if (cmd.hasOption("help"))
 			{
 				HelpFormatter hf = new HelpFormatter();
-				hf.printHelp("collector-cli plan", options, true);
+				hf.printHelp("collector plan", options, true);
 				return 0;
 			}
 
 			String providerId = cmd.getOptionValue("provider-id");
-			String scopeFile = cmd.getOptionValue("scope-file");
+			if (providerId == null || providerId.isBlank())
+			{
+				System.err.println("Missing required option: --provider-id");
+				HelpFormatter hf = new HelpFormatter();
+				hf.printHelp("collector plan", options, true);
+				return 1;
+			}
+			String collectorContextFile = cmd.getOptionValue("collector-context-file");
 			String targetTypesOpt = cmd.getOptionValue("target-types");
 			String skipTypesOpt = cmd.getOptionValue("skip-types");
 			boolean skipAllDeps = cmd.hasOption("skip-all-dependencies");
@@ -173,44 +293,81 @@ public class Main
 
 			CollectorEngine engine = CliUtils.createEngine();
 			CollectionPlanner planner = engine.getPlanner();
-			CloudProvider provider = CliUtils.loadProvider(providerId);
+			//CloudProvider provider = CliUtils.loadProvider(providerId);
 
-			CollectionScope scope = CliUtils.readJsonIfPresent(scopeFile, CollectionScope.class);
-			// Overlay provider-arg key=value pairs into scope attributes when present
-			String[] providerArgs = cmd.getOptionValues("provider-arg");
-			if (providerArgs != null && providerArgs.length > 0)
+			CollectorContext collectorContext = CliUtils.readJsonIfPresent(collectorContextFile, CollectorContext.class);
+			if (collectorContext == null)
 			{
-				scope = CliScopeFactory.overlayProviderArgs(scope, providerArgs);
+				collectorContext = CollectorContext.builder().build();
+			}
+
+//			if (scope == null)
+//			{
+//				scope = CollectionScope.builder()
+//					.provider(provider)
+//					.build();
+//			}
+//			else if (scope.getProvider() == null)
+//			{
+//				scope = CollectionScope.builder()
+//					.provider(provider)
+//					.attributes(scope.getAttributes())
+//					.build();
+//			}
+			
+			
+			// Overlay collector-arg key=value pairs into scope attributes when present
+			String[] collectorArgs = cmd.getOptionValues("collector-arg");
+			if (collectorArgs != null && collectorArgs.length > 0)
+			{
+				collectorContext = CliCollectorContextFactory.overlayCollectorArgs(collectorContext, collectorArgs);
 			}
 			Set<String> targetTypes = CliUtils.parseCsvToSet(targetTypesOpt);
 			Set<String> skipTypes = CliUtils.parseCsvToSet(skipTypesOpt);
 
 			CollectionPlan plan;
 
-			if (skipAllDeps)
+			if (targetTypes != null && !targetTypes.isEmpty())
 			{
-				plan = planner.plan(provider, scope, targetTypes, true);
-			}
-			else if (skipTypes != null && !skipTypes.isEmpty())
-			{
-				plan = planner.plan(provider, scope, targetTypes, skipTypes);
-			}
-			else if (targetTypes != null && !targetTypes.isEmpty())
-			{
-				plan = planner.plan(provider, scope, targetTypes, false);
+				if (skipAllDeps)
+				{
+					plan = planner.plan(providerId, targetTypes, true, collectorContext);
+				}
+				else if (skipTypes != null && !skipTypes.isEmpty())
+				{
+					plan = planner.plan(providerId, targetTypes, skipTypes, collectorContext);
+				}
+				else
+				{
+					plan = planner.plan(providerId, targetTypes, false, collectorContext);
+				}
 			}
 			else
 			{
-				plan = planner.plan(provider, scope);
+				if (skipAllDeps)
+				{
+					System.err.println("Option --skip-all-dependencies requires --target-types to be specified");
+					return 1;
+				}
+				if (skipTypes != null && !skipTypes.isEmpty())
+				{
+					System.err.println("Option --skip-types requires --target-types to be specified");
+					return 1;
+				}
+				else
+				{
+					// No target or skip options: let the planner decide the full plan
+					plan = planner.plan(providerId, collectorContext);
+				}
 			}
 
 			if (outputFile != null)
 			{
-				JsonUtil.writeJsonFile(outputFile, plan);
+				JsonSupport.writeJsonFile(outputFile, plan);
 			}
 			else
 			{
-				System.out.println(JsonUtil.toJson(plan));
+				System.out.println(JsonSupport.toJson(plan));
 			}
 
 			return 0;
@@ -228,7 +385,19 @@ public class Main
 				.hasArg()
 				.argName("ID")
 				.desc("Provider identifier (required, must match plan.providerId)")
-				.required()
+				.build());
+			options.addOption(Option.builder("pcf")
+				.longOpt("provider-context-file")
+				.hasArg()
+				.argName("PCFILE")
+				.desc("Path to JSON file containing ProviderContext (credentials, config, etc.)")
+				.build());
+			options.addOption(Option.builder()
+				.longOpt("provider-arg")
+				.hasArgs()
+				.valueSeparator('=')
+				.argName("key=value")
+				.desc("provider argument as key=value (may be repeated)")
 				.build());
 			options.addOption(Option.builder("f")
 				.longOpt("plan-file")
@@ -240,12 +409,12 @@ public class Main
 				.longOpt("plan-stdin")
 				.desc("Read CollectionPlan JSON from stdin")
 				.build());
-			options.addOption(Option.builder("c")
-				.longOpt("context-file")
-				.hasArg()
-				.argName("FILE")
-				.desc("Path to JSON file containing ProviderContext (credentials, config, etc.)")
-				.build());
+//			options.addOption(Option.builder("c")
+//				.longOpt("context-file")
+//				.hasArg()
+//				.argName("FILE")
+//				.desc("Path to JSON file containing ProviderContext (credentials, config, etc.)")
+//				.build());
 			options.addOption(Option.builder("h")
 				.longOpt("help")
 				.desc("Show help")
@@ -257,11 +426,37 @@ public class Main
 			if (cmd.hasOption("help"))
 			{
 				HelpFormatter hf = new HelpFormatter();
-				hf.printHelp("collector-cli execute", options, true);
+				hf.printHelp("collector execute", options, true);
 				return 0;
 			}
 
 			String providerId = cmd.getOptionValue("provider-id");
+			if (providerId == null || providerId.isBlank())
+			{
+				System.err.println("Missing required option: --provider-id");
+				HelpFormatter hf = new HelpFormatter();
+				hf.printHelp("collector execute", options, true);
+				return 1;
+			}
+			
+			String providerContextFile = cmd.getOptionValue("provider-context-file");
+			ProviderContext providerContext = CliUtils.readJsonIfPresent(providerContextFile, ProviderContext.class);
+			if (providerContext == null)
+			{
+				providerContext = ProviderContext.builder().build();
+			}
+			else if(StringUtils.isNotEmpty(providerId))
+			{
+				providerContext = ProviderContext.builder().providerId(providerId).build();
+			}
+
+			// Overlay provider-arg key=value pairs into provider context attributes when present
+			String[] providerArgs = cmd.getOptionValues("provider-arg");
+			if (providerArgs != null && providerArgs.length > 0)
+			{
+				providerContext = CliProviderContextFactory.overlayProviderArgs(providerContext, providerArgs);
+			}				
+			
 			String planFile = cmd.getOptionValue("plan-file");
 			boolean planFromStdin = cmd.hasOption("plan-stdin");
 			String contextFile = cmd.getOptionValue("context-file");
@@ -282,7 +477,7 @@ public class Main
 				planJson = CliUtils.readAllFromFile(planFile);
 			}
 
-			CollectionPlan plan = JsonUtil.fromJson(planJson, CollectionPlan.class);
+			CollectionPlan plan = JsonSupport.fromJson(planJson, CollectionPlan.class);
 
 			if (!providerId.equals(plan.getProviderId()))
 			{
@@ -294,13 +489,10 @@ public class Main
 			CollectorEngine engine = CliUtils.createEngine();
 			CollectionExecutor executor = engine.getExecutor();
 
-			ProviderContext context = CliUtils.readJsonIfPresent(contextFile, ProviderContext.class);
-			ProviderSession session = CliUtils.loadProvider(providerId).openSession(context);
-
-			CollectionRun run = executor.collect(plan, session);
+			CollectionRun run = executor.collect(plan, providerContext);
 
 			CollectionRunSummary summary = run.getCollectionRunSummary();
-			System.out.println(JsonUtil.toJson(summary));
+			System.out.println(JsonSupport.toJson(summary));
 
 			return 0;
 		}
@@ -333,7 +525,7 @@ public class Main
 			catch (ParseException e)
 			{
 				HelpFormatter hf = new HelpFormatter();
-				hf.printHelp("collector-cli snapshot", options, true);
+				hf.printHelp("collector snapshot", options, true);
 				System.err.println("Failed to parse snapshot command: " + e.getMessage());
 				return 1;
 			}
@@ -341,7 +533,7 @@ public class Main
 			if (cmd.hasOption("help"))
 			{
 				HelpFormatter hf = new HelpFormatter();
-				hf.printHelp("collector-cli snapshot", options, true);
+				hf.printHelp("collector snapshot", options, true);
 				return 0;
 			}
 
@@ -374,8 +566,7 @@ public class Main
 			CliProviderSnapshot providerSnapshot = new CliProviderSnapshot(providerId, null, null);
 
 			resultEntities.forEach(resultEntity -> {
-				CollectionResult daoBackedResult = new DaoCollectionResult(
-					resultEntity.getResultId(), resultDao, entityDao);
+				CollectionResult daoBackedResult = new DaoBackedCollectionResult(resultEntity, entityDao);
 				try
 				{
 					snapshotBuilder.mergeSnapshot(providerSnapshot, daoBackedResult);

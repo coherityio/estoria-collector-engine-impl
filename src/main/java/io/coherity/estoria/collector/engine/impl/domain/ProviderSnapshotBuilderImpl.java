@@ -39,24 +39,24 @@ public class ProviderSnapshotBuilderImpl implements SnapshotBuilder
 	}
 
 	@Override
-	public ProviderSnapshot mergeSnapshot(ProviderSnapshot providerSnapshot, CollectionResult entitiesSnapshot)
+	public ProviderSnapshot mergeSnapshot(ProviderSnapshot providerSnapshot, CollectionResult collectionResult)
 		throws SnapshotBuildException
 	{
 		if (providerSnapshot == null)
 		{
 			throw new SnapshotBuildException("providerSnapshot must not be null");
 		}
-		if (entitiesSnapshot == null)
+		if (collectionResult == null)
 		{
-			throw new SnapshotBuildException("entitiesSnapshot must not be null");
+			throw new SnapshotBuildException("collectionResult must not be null");
 		}
 
 		try
 		{
 			Files.createDirectories(baseDir);
-			Path file = resolveSnapshotFile(providerSnapshot, entitiesSnapshot);
+			Path file = resolveSnapshotFile(providerSnapshot, collectionResult);
 			log.info("Writing provider snapshot for providerId={} entityType={} to file {}",
-				providerSnapshot.getProviderId(), entitiesSnapshot.getEntityType(), file.toAbsolutePath());
+				providerSnapshot.getProviderId(), collectionResult.getEntityType(), file.toAbsolutePath());
 
 			final int pageSize = 500;
 			String cursor = null;
@@ -69,11 +69,11 @@ public class ProviderSnapshotBuilderImpl implements SnapshotBuilder
 			{
 				while (true)
 				{
-					CloudEntityPage page = entitiesSnapshot.getCloudEntityPage(cursor, pageSize);
+					CloudEntityPage page = collectionResult.getCloudEntityPage(cursor, pageSize);
 					if (page == null || page.getEntities() == null || page.getEntities().isEmpty())
 					{
 						log.debug("No more entities to write for providerId={} entityType={}",
-							providerSnapshot.getProviderId(), entitiesSnapshot.getEntityType());
+							providerSnapshot.getProviderId(), collectionResult.getEntityType());
 						break;
 					}
 
@@ -82,9 +82,9 @@ public class ProviderSnapshotBuilderImpl implements SnapshotBuilder
 						if (log.isTraceEnabled())
 						{
 							log.trace("Writing entity for providerId={} entityType={}",
-								providerSnapshot.getProviderId(), entitiesSnapshot.getEntityType());
+								providerSnapshot.getProviderId(), collectionResult.getEntityType());
 						}
-						String jsonLine = buildJsonLine(providerSnapshot, entitiesSnapshot, entity);
+						String jsonLine = buildJsonLine(providerSnapshot, collectionResult, entity);
 						writer.write(jsonLine);
 						writer.newLine();
 					}
@@ -93,7 +93,7 @@ public class ProviderSnapshotBuilderImpl implements SnapshotBuilder
 					if (cursor == null)
 					{
 						log.debug("Reached end of cursor stream for providerId={} entityType={}",
-							providerSnapshot.getProviderId(), entitiesSnapshot.getEntityType());
+							providerSnapshot.getProviderId(), collectionResult.getEntityType());
 						break;
 					}
 				}
