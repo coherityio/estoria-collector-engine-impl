@@ -1,12 +1,5 @@
 package io.coherity.estoria.collector.engine.impl.cli;
 
-import java.io.BufferedWriter;
-import java.io.IOException;
-import java.io.OutputStreamWriter;
-import java.io.Writer;
-import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
-import java.nio.file.Path;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Optional;
@@ -21,16 +14,11 @@ import org.apache.commons.cli.Option;
 import org.apache.commons.cli.Options;
 import org.apache.commons.cli.ParseException;
 
-import io.coherity.estoria.collector.engine.api.CloudEntityPage;
 import io.coherity.estoria.collector.engine.api.CollectionExecutor;
-import io.coherity.estoria.collector.engine.api.CollectionFailure;
 import io.coherity.estoria.collector.engine.api.CollectionPlan;
 import io.coherity.estoria.collector.engine.api.CollectionPlanner;
 import io.coherity.estoria.collector.engine.api.CollectionResult;
 import io.coherity.estoria.collector.engine.api.CollectionRun;
-import io.coherity.estoria.collector.engine.api.CollectionRunFailure;
-import io.coherity.estoria.collector.engine.api.CollectionRunSummary;
-import io.coherity.estoria.collector.engine.api.CollectionSummary;
 import io.coherity.estoria.collector.engine.api.CollectorEngine;
 import io.coherity.estoria.collector.engine.api.SnapshotBuilder;
 import io.coherity.estoria.collector.engine.impl.dao.CollectedEntityH2Dao;
@@ -40,7 +28,6 @@ import io.coherity.estoria.collector.engine.impl.dao.CollectionRunEntity;
 import io.coherity.estoria.collector.engine.impl.dao.CollectionRunH2Dao;
 import io.coherity.estoria.collector.engine.impl.domain.DaoBackedCollectionResult;
 import io.coherity.estoria.collector.engine.impl.util.JsonSupport;
-import io.coherity.estoria.collector.spi.CloudEntity;
 import io.coherity.estoria.collector.spi.CloudProvider;
 import io.coherity.estoria.collector.spi.Collector;
 import io.coherity.estoria.collector.spi.CollectorContext;
@@ -138,6 +125,11 @@ public class Main
         {
             Options options = new Options();
             options.addOption(Option.builder("h").longOpt("help").desc("Show help").build());
+            options.addOption(
+            	    Option.builder()
+            	        .longOpt("pretty")
+            	        .desc("Pretty-print JSON output (2-space indentation)")
+            	        .build());            
 
             CommandLineParser parser = new DefaultParser();
             CommandLine cmd = parser.parse(options, args);
@@ -152,7 +144,9 @@ public class Main
             Set<CloudProvider> providers = engine.getLoadedCloudProviders();
             List<ProviderInfo> infos = providers.stream().map(CloudProvider::getProviderInfo).toList();
 
-            System.out.println(JsonSupport.toJson(infos));
+            boolean prettyFormat = cmd.hasOption("pretty");
+            
+            System.out.println(JsonSupport.toJson(infos, prettyFormat));
             return 0;
         }
     }
@@ -171,6 +165,11 @@ public class Main
                 .longOpt("provider-id").hasArg().argName("ID")
                 .desc("Provider identifier (required)").build());
             options.addOption(Option.builder("h").longOpt("help").desc("Show help").build());
+            options.addOption(
+            	    Option.builder()
+            	        .longOpt("pretty")
+            	        .desc("Pretty-print JSON output (2-space indentation)")
+            	        .build());            
 
             CommandLineParser parser = new DefaultParser();
             CommandLine cmd = parser.parse(options, args);
@@ -207,7 +206,9 @@ public class Main
             Set<Collector> collectors = collectorRegistry.getRegisteredCollectors();
             List<CollectorInfo> infos = collectors.stream().map(Collector::getCollectorInfo).toList();
 
-            System.out.println(JsonSupport.toJson(infos));
+            boolean prettyFormat = cmd.hasOption("pretty");
+
+            System.out.println(JsonSupport.toJson(infos, prettyFormat));
             return 0;
         }
     }
@@ -243,6 +244,11 @@ public class Main
             options.addOption(Option.builder("o")
                 .longOpt("output").hasArg().argName("FILE")
                 .desc("Write plan JSON to file (default: stdout)").build());
+            options.addOption(
+            	    Option.builder()
+            	        .longOpt("pretty")
+            	        .desc("Pretty-print JSON output (2-space indentation)")
+            	        .build());            
             options.addOption(Option.builder("h").longOpt("help").desc("Show help").build());
 
             CommandLineParser parser = new DefaultParser();
@@ -319,13 +325,14 @@ public class Main
                 plan = planner.plan(providerId, collectorContext);
             }
 
+            boolean prettyFormat = cmd.hasOption("pretty");
             if (outputFile != null)
             {
-                JsonSupport.writeJsonFile(outputFile, plan);
+                JsonSupport.writeJsonFile(outputFile, plan, prettyFormat);
             }
             else
             {
-                System.out.println(JsonSupport.toJson(plan));
+                System.out.println(JsonSupport.toJson(plan, prettyFormat));
             }
 
             return 0;
@@ -357,6 +364,11 @@ public class Main
             options.addOption(Option.builder()
                 .longOpt("plan-stdin")
                 .desc("Read CollectionPlan JSON from stdin").build());
+            options.addOption(
+            	    Option.builder()
+            	        .longOpt("pretty")
+            	        .desc("Pretty-print JSON output (2-space indentation)")
+            	        .build());            
             options.addOption(Option.builder("h").longOpt("help").desc("Show help").build());
 
             CommandLineParser parser = new DefaultParser();
@@ -419,7 +431,8 @@ public class Main
 
             // CollectionRunView deliberately omits getCollectionResults() to
             // avoid triggering additional DB reads after execution.
-            System.out.println(JsonSupport.toPrettyJson(CollectionRunView.from(run)));
+            boolean prettyFormat = cmd.hasOption("pretty");
+            System.out.println(JsonSupport.toJson(CollectionRunView.from(run), prettyFormat));
 
             return 0;
         }
@@ -545,6 +558,12 @@ public class Main
             			.argName("ID")
             			.desc("Run identifier to snapshot (required)")
             			.build());
+            options.addOption(
+            	    Option.builder()
+            	        .longOpt("pretty")
+            	        .desc("Pretty-print JSON output (2-space indentation)")
+            	        .build());            
+            
             options.addOption(Option.builder("h").longOpt("help").desc("Show help").build());
 
             CommandLineParser parser = new DefaultParser();
@@ -612,6 +631,9 @@ public class Main
                         "Failed to build snapshot for resultId=" + resultEntity.getResultId(), e);
                 }
             }
+            
+            boolean prettyFormat = cmd.hasOption("pretty");
+
 
             return 0;
         }

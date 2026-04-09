@@ -63,6 +63,25 @@ public final class JsonSupport
         }
     }
     
+    public static String toJson(Object value, boolean prettyFormat)
+    {
+        try
+        {
+        	if(prettyFormat)
+        	{
+                return OBJECT_MAPPER.writerWithDefaultPrettyPrinter().writeValueAsString(value);
+        	}
+        	else
+        	{
+                return OBJECT_MAPPER.writeValueAsString(value);
+        	}
+        }
+        catch (JsonProcessingException ex)
+        {
+            throw new JsonException("Failed to serialize object to JSON.", ex);
+        }
+    }
+    
 //    public static String toJson(Object value)
 //    {
 //    	if(value == null)
@@ -148,6 +167,12 @@ public final class JsonSupport
         return OBJECT_MAPPER.writerFor(targetType);
     }
     
+    public static void writeJsonFile(String path, Object value, boolean prettyFormat) throws IOException
+    {
+        String json = JsonSupport.toJson(value, prettyFormat);
+        Files.writeString(Path.of(path), json, StandardCharsets.UTF_8);
+    }
+
     public static void writeJsonFile(String path, Object value) throws IOException
     {
         String json = JsonSupport.toJson(value);
