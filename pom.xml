@@ -67,6 +67,7 @@
             <groupId>io.coherity.estoria.provider</groupId>
             <artifactId>estoria-collector-provider-aws</artifactId>
             <version>${estoria.version}</version>
+            <!-- scope>runtime</scope -->
         </dependency>
 
         <!-- Lombok -->

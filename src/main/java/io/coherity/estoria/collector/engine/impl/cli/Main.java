@@ -437,17 +437,37 @@ public class Main
         int run(String[] args) throws Exception
         {
             Options options = new Options();
-            options.addOption(Option.builder("r")
-                .longOpt("run-id").hasArg().argName("ID")
-                .desc("Run identifier to retrieve (required)").build());
-            options.addOption(Option.builder("s")
-                .longOpt("page-size").hasArg().argName("N")
-                .desc("Number of entities to fetch per page (default: " + DEFAULT_PAGE_SIZE + ")")
-                .build());
-            options.addOption(Option.builder("o")
-                .longOpt("output").hasArg().argName("FILE")
-                .desc("Write output to file instead of stdout").build());
-            options.addOption(Option.builder("h").longOpt("help").desc("Show help").build());
+            options.addOption(
+            		Option.builder("r")
+	            		.longOpt("run-id")
+	            		.hasArg()
+	            		.argName("ID")
+	            		.desc("Run identifier to retrieve (required)")
+	            		.build());
+            options.addOption(
+            		Option.builder("s")
+	            		.longOpt("page-size")
+	            		.hasArg()
+	            		.argName("N")
+	            		.desc("Number of entities to fetch per page (default: " + DEFAULT_PAGE_SIZE + ")")
+	            		.build());
+            options.addOption(
+            		Option.builder("o")
+	            		.longOpt("output")
+	            		.hasArg()
+	            		.argName("FILE")
+	            		.desc("Write output to file instead of stdout")
+	            		.build());
+            options.addOption(
+            		Option.builder("h")
+	            		.longOpt("help")
+	            		.desc("Show help")
+	            		.build());
+            options.addOption(
+            	    Option.builder()
+            	        .longOpt("pretty")
+            	        .desc("Pretty-print JSON output (2-space indentation)")
+            	        .build());            
 
             CommandLineParser parser = new DefaultParser();
             CommandLine cmd = parser.parse(options, args);
@@ -487,7 +507,8 @@ public class Main
             }
 
             String outputFile = cmd.getOptionValue("output");
-
+            boolean prettyFormat = cmd.hasOption("pretty");
+            
             CollectorEngine engine = CliUtils.createEngine();
             CollectionExecutor executor = engine.getExecutor();
             CollectionRun run = executor.getCollectedRun(runId);
@@ -501,163 +522,9 @@ public class Main
             // getCollectionResults() is intentional here — this command's entire
             // purpose is to stream the full run. Pages are flushed immediately.
             List<CollectionResult> results = run.getCollectionResults();
-
-            try (Writer writer = openWriter(outputFile))
-            {
-                streamCollectionRun(run, results, pageSize, writer);
-            }
+            CliUtils.streamCollectionRun(run, results, pageSize, outputFile, prettyFormat);
 
             return 0;
-        }
-
-        /**
-         * Streams the run as a single JSON object to {@code writer}.
-         * Null-valued fields are omitted entirely to keep the output valid.
-         * Each entity page is flushed to the writer immediately after it is
-         * fetched so heap usage stays bounded to one page at a time.
-         */
-        private void streamCollectionRun(
-            CollectionRun run,
-            List<CollectionResult> results,
-            int pageSize,
-            Writer writer) throws IOException
-        {
-            CollectionRunSummary runSummary  = run.getCollectionRunSummary();
-            CollectionRunFailure runFailure  = run.getCollectionRunFailure();
-
-            // --- run header --------------------------------------------------
-            writer.write("{");
-            writer.write("\"runId\":"        + JsonSupport.toJson(run.getRunId())      + ",");
-            writer.write("\"providerId\":"   + JsonSupport.toJson(run.getProviderId()) + ",");
-            
-            if(run.getProviderContext() != null)
-            {
-                writer.write("\"providerContext\":"   + JsonSupport.toJson(run.getProviderContext()) + ",");
-            }
-            
-            writer.write("\"status\":"       + JsonSupport.toJson(run.getStatus() != null ? run.getStatus().name() : null) + ",");
-            writer.write("\"runStartTime\":" + JsonSupport.toJson(run.getRunStartTime()) + ",");
-            writer.write("\"runEndTime\":"   + JsonSupport.toJson(run.getRunEndTime())   + ",");
-
-            if (runSummary != null)
-            {
-                writer.write("\"summary\":"  + JsonSupport.toJson(runSummary) + ",");
-            }
-
-            if (runFailure != null)
-            {
-                writer.write("\"failure\":"  + JsonSupport.toJson(runFailure) + ",");
-            }
-
-            writer.write("\"results\":[");
-            writer.flush();
-
-            // --- one result at a time ----------------------------------------
-            int resultIndex = 0;
-            for (CollectionResult result : results)
-            {
-                if (resultIndex > 0)
-                {
-                    writer.write(",");
-                }
-
-                CollectionFailure resultFailure  = result.getCollectionFailure();
-                CollectionSummary resultSummary  = result.getCollectionSummary();
-
-                // result header — entity array opened but not yet written
-                writer.write("{");
-                writer.write("\"resultId\":"    + JsonSupport.toJson(result.getResultId())    + ",");
-                writer.write("\"collectorId\":" + JsonSupport.toJson(result.getCollectorId()) + ",");
-                writer.write("\"entityType\":"  + JsonSupport.toJson(result.getEntityType())  + ",");
-                writer.write("\"entityCount\":" + result.getEntityCount()                     + ",");
-                writer.write("\"success\":"     + result.isSuccess()                          + ",");
-                writer.write("\"collectionStartTime\":"
-                    + JsonSupport.toJson(result.getCollectionStartTime()) + ",");
-                writer.write("\"collectionEndTime\":"
-                    + JsonSupport.toJson(result.getCollectionEndTime())   + ",");
-
-                if (resultFailure != null)
-                {
-                    writer.write("\"failure\":"  + JsonSupport.toJson(resultFailure) + ",");
-                }
-
-                if (resultSummary != null)
-                {
-                    writer.write("\"summary\":"  + JsonSupport.toJson(resultSummary) + ",");
-                }
-
-                writer.write("\"entities\":[");
-                writer.flush();
-
-                // --- entity pages for this result ----------------------------
-                // Cursor-based: start with null, advance using nextCursorToken.
-                String cursorToken = null;
-                boolean firstEntity = true;
-
-                do
-                {
-                    CloudEntityPage page = result.getCloudEntityPage(cursorToken, pageSize);
-
-                    if (page == null || page.getEntities() == null || page.getEntities().isEmpty())
-                    {
-                        break;
-                    }
-
-                    for (CloudEntity entity : page.getEntities())
-                    {
-                        if (!firstEntity)
-                        {
-                            writer.write(",");
-                        }
-                        // Serialize and immediately discard — no accumulation.
-                        writer.write(JsonSupport.toJson(entity));
-                        firstEntity = false;
-                    }
-
-                    // Flush every page to the target immediately.
-                    writer.flush();
-
-                    cursorToken = page.getNextCursorToken();
-                }
-                while (cursorToken != null && !cursorToken.isBlank());
-
-                // close entities array and result object
-                writer.write("]}");
-                writer.flush();
-
-                log.debug("Streamed result entityType={} resultId={}",
-                    result.getEntityType(), result.getResultId());
-
-                resultIndex++;
-            }
-
-            // close results array and root object
-            writer.write("]}");
-            writer.write(System.lineSeparator());
-            writer.flush();
-        }
-
-        /**
-         * Opens a buffered writer to {@code outputFile} when provided, otherwise
-         * wraps stdout. The caller owns the lifecycle. Stdout is only flushed on
-         * close, never actually closed.
-         */
-        private Writer openWriter(String outputFile) throws IOException
-        {
-            if (outputFile != null && !outputFile.isBlank())
-            {
-                log.info("Writing collection output to file: {}", outputFile);
-                return Files.newBufferedWriter(Path.of(outputFile), StandardCharsets.UTF_8);
-            }
-
-            return new BufferedWriter(new OutputStreamWriter(System.out, StandardCharsets.UTF_8))
-            {
-                @Override
-                public void close() throws IOException
-                {
-                    flush(); // flush but never close stdout
-                }
-            };
         }
     }
 
@@ -671,9 +538,13 @@ public class Main
         int run(String[] args) throws Exception
         {
             Options options = new Options();
-            options.addOption(Option.builder("r")
-                .longOpt("run-id").hasArg().argName("ID")
-                .desc("Run identifier to snapshot (required)").build());
+            options.addOption(
+            		Option.builder("r")
+            			.longOpt("run-id")
+            			.hasArg()
+            			.argName("ID")
+            			.desc("Run identifier to snapshot (required)")
+            			.build());
             options.addOption(Option.builder("h").longOpt("help").desc("Show help").build());
 
             CommandLineParser parser = new DefaultParser();
@@ -703,9 +574,9 @@ public class Main
                 return 1;
             }
 
-            CollectionRunH2Dao    runDao    = new CollectionRunH2Dao();
+            CollectionRunH2Dao runDao = new CollectionRunH2Dao();
             CollectionResultH2Dao resultDao = new CollectionResultH2Dao();
-            CollectedEntityH2Dao  entityDao = new CollectedEntityH2Dao();
+            CollectedEntityH2Dao entityDao = new CollectedEntityH2Dao();
 
             Optional<CollectionRunEntity> runEntityOpt = runDao.findById(runId);
             if (runEntityOpt.isEmpty())
@@ -721,7 +592,7 @@ public class Main
                 return 1;
             }
 
-            CollectorEngine engine          = CliUtils.createEngine();
+            CollectorEngine engine = CliUtils.createEngine();
             SnapshotBuilder snapshotBuilder = engine.getSnapshotBuilder();
 
             CliProviderSnapshot providerSnapshot =

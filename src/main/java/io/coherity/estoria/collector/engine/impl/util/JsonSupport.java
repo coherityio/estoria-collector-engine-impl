@@ -1,6 +1,7 @@
 package io.coherity.estoria.collector.engine.impl.util;
 
 import java.io.IOException;
+import java.io.Writer;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -8,7 +9,10 @@ import java.nio.file.Path;
 import org.apache.commons.lang3.StringUtils;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
+import com.fasterxml.jackson.core.JsonGenerator;
 import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.core.util.DefaultIndenter;
+import com.fasterxml.jackson.core.util.DefaultPrettyPrinter;
 import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.MapperFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -46,12 +50,9 @@ public final class JsonSupport
         return OBJECT_MAPPER;
     }
 
+    
     public static String toJson(Object value)
     {
-    	if(value == null)
-    	{
-    		return "";
-    	}
         try
         {
             return OBJECT_MAPPER.writeValueAsString(value);
@@ -61,6 +62,22 @@ public final class JsonSupport
             throw new JsonException("Failed to serialize object to JSON.", ex);
         }
     }
+    
+//    public static String toJson(Object value)
+//    {
+//    	if(value == null)
+//    	{
+//    		return "";
+//    	}
+//        try
+//        {
+//            return OBJECT_MAPPER.writeValueAsString(value);
+//        }
+//        catch (JsonProcessingException ex)
+//        {
+//            throw new JsonException("Failed to serialize object to JSON.", ex);
+//        }
+//    }
 
     public static String toJsonSilent(Object value)
     {
@@ -136,5 +153,27 @@ public final class JsonSupport
         String json = JsonSupport.toJson(value);
         Files.writeString(Path.of(path), json, StandardCharsets.UTF_8);
     }
+    
+    
+    public static JsonGenerator createJsonGenerator(Writer writer, boolean prettyFormat) throws IOException
+    {
+        JsonGenerator generator = OBJECT_MAPPER.getFactory().createGenerator(writer);
+
+        if (prettyFormat)
+        {
+            DefaultPrettyPrinter prettyPrinter = new DefaultPrettyPrinter();
+            DefaultIndenter indenter = new DefaultIndenter("  ", System.lineSeparator());
+            prettyPrinter.indentObjectsWith(indenter);
+            prettyPrinter.indentArraysWith(indenter);
+            generator.setPrettyPrinter(prettyPrinter);
+        }
+
+        return generator;
+    }
+    
+    public static void writeObject(JsonGenerator generator, Object value) throws IOException
+    {
+        OBJECT_MAPPER.writeValue(generator, value);
+    }    
     
 }
