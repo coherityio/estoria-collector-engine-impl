@@ -26,6 +26,15 @@
             <outputDirectory>lib</outputDirectory>
         </fileSet>
 
+        <!-- Documentation files -->
+        <fileSet>
+            <directory>${project.basedir}/src/main/dist/plugins</directory>
+            <outputDirectory>plugins</outputDirectory>
+            <includes>
+                <include>**/*</include>
+            </includes>
+        </fileSet>
+
         <!-- Bin scripts and any extra bin files -->
         <fileSet>
             <directory>${project.basedir}/src/main/dist/bin</directory>

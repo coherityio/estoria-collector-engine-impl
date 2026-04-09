@@ -1,15 +1,17 @@
 package io.coherity.estoria.collector.engine.impl.domain;
 
-import java.util.ArrayList;
-import java.util.List;
+import java.util.HashSet;
 import java.util.Optional;
+import java.util.Set;
+
+import org.apache.commons.lang3.Validate;
 
 import io.coherity.estoria.collector.engine.api.CollectionExecutor;
 import io.coherity.estoria.collector.engine.api.CollectionPlanner;
 import io.coherity.estoria.collector.engine.api.CollectorEngine;
 import io.coherity.estoria.collector.engine.api.SnapshotBuilder;
 import io.coherity.estoria.collector.spi.CloudProvider;
-import io.coherity.estoria.collector.spi.Collector;
+import io.coherity.estoria.collector.spi.CollectorRegistry;
 
 /**
  * ServiceLoader-based implementation of CollectorEngine.
@@ -22,7 +24,7 @@ import io.coherity.estoria.collector.spi.Collector;
  */
 public class CollectorEngineImpl implements CollectorEngine
 {
-	private static volatile CollectorEngineImpl instance;
+//	private static volatile CollectorEngineImpl instance;
 
 	private CollectionPlanner collectionPlanner;
 	private CollectionExecutor collectionExecutor;
@@ -62,24 +64,24 @@ public class CollectorEngineImpl implements CollectorEngine
 		this.snapshotBuilder = new ProviderSnapshotBuilderImpl();
 	}
 
-	/**
-	 * Static factory with lazy-initialized singleton for CLI usage.
-	 * Thread-safe double-checked locking pattern.
-	 */
-	public static CollectorEngineImpl getInstance()
-	{
-		if (instance == null)
-		{
-			synchronized (CollectorEngineImpl.class)
-			{
-				if (instance == null)
-				{
-					instance = new CollectorEngineImpl();
-				}
-			}
-		}
-		return instance;
-	}
+//	/**
+//	 * Static factory with lazy-initialized singleton for CLI usage.
+//	 * Thread-safe double-checked locking pattern.
+//	 */
+//	public static CollectorEngineImpl getInstance()
+//	{
+//		if (instance == null)
+//		{
+//			synchronized (CollectorEngineImpl.class)
+//			{
+//				if (instance == null)
+//				{
+//					instance = new CollectorEngineImpl();
+//				}
+//			}
+//		}
+//		return instance;
+//	}
 
 	public CollectionPlanner getPlanner()
 	{
@@ -97,20 +99,44 @@ public class CollectorEngineImpl implements CollectorEngine
 	}
 
 	@Override
-	public List<CloudProvider> getLoadedCloudProviders()
+	public Set<CloudProvider> getLoadedCloudProviders()
 	{
-		return new ArrayList<>(this.providerRegistry.getLoadedCloudProviders());
+		return new HashSet<>(this.providerRegistry.getLoadedCloudProviders());
 	}
 
 	@Override
-	public List<Collector> getLoadedCollectors(String providerId)
+	public Optional<CloudProvider> getLoadedCloudProvider(String providerId)
 	{
-		Optional<CollectorRegistry> opCollectorRegistry = this.providerRegistry.getLoadedCollectorRegistry(providerId);
-		if(opCollectorRegistry.isEmpty())
-		{
-			//empty list
-			return List.of();
-		}
-		return new ArrayList<>(opCollectorRegistry.get().getCollectors());
+		return this.providerRegistry.getLoadedCloudProvider(providerId);
 	}
+
+	@Override
+	public Set<String> getRegisteredEntityTypes(String providerId)
+	{
+		Validate.notEmpty(providerId);
+		Set<String> registeredEntityTypeSet = null;
+		Optional<CloudProvider> opLoadedCloudProvider = this.providerRegistry.getLoadedCloudProvider(providerId);
+		if(opLoadedCloudProvider.isEmpty())
+		{
+			throw new IllegalStateException("provider: " + providerId + " not found");
+		}
+		CollectorRegistry collectorRegistry = opLoadedCloudProvider.get().getCollectorRegistry();
+		if(collectorRegistry != null)
+		{
+			registeredEntityTypeSet = collectorRegistry.getRegisteredEntityTypes();
+		}
+		return registeredEntityTypeSet;
+	}
+
+//	@Override
+//	public List<Collector> getLoadedCollectors(String providerId)
+//	{
+//		Optional<CollectorRegistry> opCollectorRegistry = this.providerRegistry.getLoadedCollectorRegistry(providerId);
+//		if(opCollectorRegistry.isEmpty())
+//		{
+//			//empty list
+//			return List.of();
+//		}
+//		return new ArrayList<>(opCollectorRegistry.get().getCollectors());
+//	}
 }

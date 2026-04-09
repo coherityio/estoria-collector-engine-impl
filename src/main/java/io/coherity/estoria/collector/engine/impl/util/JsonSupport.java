@@ -30,33 +30,13 @@ public final class JsonSupport
     {
         ObjectMapper mapper = new ObjectMapper();
 
-        /*
-         * Automatically registers supported modules found on the classpath,
-         * such as JavaTimeModule, Jdk8Module, parameter names module, etc.
-         */
         mapper.findAndRegisterModules();
 
-        /*
-         * Production-friendly defaults.
-         */
         mapper.setSerializationInclusion(JsonInclude.Include.NON_NULL);
-
-        /*
-         * Safer for forward/backward compatibility when payloads evolve.
-         */
         mapper.configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
-
-        /*
-         * Optional but usually desirable:
-         * do not fail if a bean has no serializable properties.
-         */
         mapper.configure(com.fasterxml.jackson.databind.SerializationFeature.FAIL_ON_EMPTY_BEANS, false);
-
-        /*
-         * Optional:
-         * accept case-insensitive enums if your APIs/configs may vary in case.
-         */
         mapper.configure(MapperFeature.ACCEPT_CASE_INSENSITIVE_ENUMS, true);
+        mapper.configure(com.fasterxml.jackson.databind.SerializationFeature.WRITE_DATES_AS_TIMESTAMPS, false);
 
         return mapper;
     }

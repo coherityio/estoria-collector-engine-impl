@@ -9,7 +9,7 @@ import java.util.Set;
 import java.util.stream.Collectors;
 
 import io.coherity.estoria.collector.engine.api.CollectorEngine;
-import io.coherity.estoria.collector.engine.impl.domain.CollectorEngineImpl;
+import io.coherity.estoria.collector.engine.impl.domain.CollectorEngineFactoryImpl;
 import io.coherity.estoria.collector.engine.impl.util.JsonSupport;
 
 final class CliUtils
@@ -20,7 +20,7 @@ final class CliUtils
 
     static CollectorEngine createEngine()
     {
-        return CollectorEngineImpl.getInstance();
+        return CollectorEngineFactoryImpl.getInstance().getCollectorEngine();
     }
 
     static <T> T readJsonIfPresent(String file, Class<T> type) throws IOException

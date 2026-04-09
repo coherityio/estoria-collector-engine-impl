@@ -2,6 +2,7 @@ package io.coherity.estoria.collector.engine.impl.cli;
 
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Properties;
 
 import io.coherity.estoria.collector.spi.ProviderContext;
 
@@ -14,12 +15,43 @@ final class CliProviderContextFactory
 	{
 	}
 
-	/**
-	 * Overlay provider-arg key=value pairs onto an existing or new CollectionScope.
-	 *
-	 * All keys are stored in the attributes map. Existing attributes from the
-	 * base scope are preserved and overridden by any matching provider-arg keys.
-	 */
+	static ProviderContext overlayProviderArgs(ProviderContext baseProviderContext, Properties properties)
+	{
+		Map<String, Object> attributes = new HashMap<>();
+
+		// carry forward existing attributes
+		if (baseProviderContext != null && baseProviderContext.getAttributes() != null)
+		{
+			attributes.putAll(baseProviderContext.getAttributes());
+		}
+
+		if (properties != null && !properties.isEmpty())
+		{
+			for (String name : properties.stringPropertyNames())
+			{
+				if (name == null || name.isBlank())
+				{
+					continue;
+				}
+
+				String value = properties.getProperty(name);
+
+				if (value == null || value.isBlank())
+				{
+					// ignore empty values (consistent with your previous behavior)
+					continue;
+				}
+
+				attributes.put(name.trim(), value.trim());
+			}
+		}
+
+		return ProviderContext
+			.builder()
+			.attributes(attributes)
+			.build();
+	}
+	
 	static ProviderContext overlayProviderArgs(ProviderContext baseProviderContext, String[] keyValuePairs)
 	{
 		Map<String, Object> attributes = new HashMap<>();
@@ -56,7 +88,7 @@ final class CliProviderContextFactory
 
 		return ProviderContext
 			.builder()
-			.providerId(baseProviderContext != null ? baseProviderContext.getProviderId() : null)
+			//.providerId(baseProviderContext != null ? baseProviderContext.getProviderId() : null)
 			.attributes(attributes)
 			.build();
 	}

@@ -12,7 +12,7 @@ import java.util.Optional;
 
 import javax.sql.DataSource;
 
-import io.coherity.estoria.collector.engine.impl.cli.ApplicationConfig;
+import io.coherity.estoria.collector.engine.impl.config.ApplicationConfig;
 
 public class CollectionResultH2Dao implements CollectionResultDao
 {

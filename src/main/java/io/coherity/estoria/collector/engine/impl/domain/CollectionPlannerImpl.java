@@ -11,7 +11,9 @@ import org.apache.commons.lang3.Validate;
 import io.coherity.estoria.collector.engine.api.CollectionPlan;
 import io.coherity.estoria.collector.engine.api.CollectionPlanner;
 import io.coherity.estoria.collector.engine.api.PlanningException;
+import io.coherity.estoria.collector.spi.CircularReferenceException;
 import io.coherity.estoria.collector.spi.CollectorContext;
+import io.coherity.estoria.collector.spi.CollectorRegistry;
 
 public class CollectionPlannerImpl implements CollectionPlanner
 {

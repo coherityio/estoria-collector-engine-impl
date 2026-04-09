@@ -1,263 +1,365 @@
 package io.coherity.estoria.collector.engine.impl.domain;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.times;
-import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-import java.util.Collection;
+import java.io.IOException;
+import java.net.URL;
+import java.util.Collections;
+import java.util.Enumeration;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 
 import io.coherity.estoria.collector.engine.api.CollectionExecutor;
 import io.coherity.estoria.collector.engine.api.CollectionPlanner;
 import io.coherity.estoria.collector.engine.api.SnapshotBuilder;
+import io.coherity.estoria.collector.spi.CloudProvider;
 import io.coherity.estoria.collector.spi.Collector;
+import io.coherity.estoria.collector.spi.CollectorRegistry;
+import io.coherity.estoria.collector.spi.ProviderException;
+import io.coherity.estoria.collector.spi.ProviderIdentifier;
+import io.coherity.estoria.collector.spi.ProviderInfo;
 
 class CollectorEngineImplTest
 {
-	private static final String AWS = "aws";
+    private static final String CLOUD_PROVIDER_SERVICE_FILE =
+        "META-INF/services/io.coherity.estoria.collector.spi.CloudProvider";
 
-	private CollectorEngineImpl newEngine(
-		CollectionPlanner collectionPlanner,
-		CollectionExecutor collectionExecutor,
-		SnapshotBuilder snapshotBuilder,
-		ProviderRegistry providerRegistry)
-	{
-		return new CollectorEngineImpl(
-			collectionPlanner,
-			collectionExecutor,
-			snapshotBuilder,
-			providerRegistry);
-	}
+    @AfterEach
+    void tearDown()
+    {
+        CollectorEngineFactoryImpl.reset();
+    }
 
-	@Nested
-	class ConstructorTest
-	{
-		@Test
-		void givenInjectedDependencies_whenConstructed_thenGettersReturnInjectedInstances()
-		{
-			CollectionPlanner collectionPlanner = mock(CollectionPlanner.class);
-			CollectionExecutor collectionExecutor = mock(CollectionExecutor.class);
-			SnapshotBuilder snapshotBuilder = mock(SnapshotBuilder.class);
-			ProviderRegistry providerRegistry = mock(ProviderRegistry.class);
+    @Nested
+    class ConstructorTest
+    {
+        @Test
+        void givenInjectedCollaborators_whenInjectableConstructorCalled_thenGettersReturnInjectedInstances()
+        {
+            CollectionPlanner collectionPlanner = mock(CollectionPlanner.class);
+            CollectionExecutor collectionExecutor = mock(CollectionExecutor.class);
+            SnapshotBuilder snapshotBuilder = mock(SnapshotBuilder.class);
+            ProviderRegistry providerRegistry = mock(ProviderRegistry.class);
 
-			CollectorEngineImpl collectorEngine = newEngine(
-				collectionPlanner,
-				collectionExecutor,
-				snapshotBuilder,
-				providerRegistry);
+            CollectorEngineImpl collectorEngine = new CollectorEngineImpl(
+                collectionPlanner,
+                collectionExecutor,
+                snapshotBuilder,
+                providerRegistry);
 
-			assertThat(collectorEngine.getPlanner()).isSameAs(collectionPlanner);
-			assertThat(collectorEngine.getExecutor()).isSameAs(collectionExecutor);
-			assertThat(collectorEngine.getSnapshotBuilder()).isSameAs(snapshotBuilder);
-		}
-	}
+            assertThat(collectorEngine.getPlanner()).isSameAs(collectionPlanner);
+            assertThat(collectorEngine.getExecutor()).isSameAs(collectionExecutor);
+            assertThat(collectorEngine.getSnapshotBuilder()).isSameAs(snapshotBuilder);
+        }
 
-	@Nested
-	class GetPlannerTest
-	{
-		@Test
-		void whenCalled_thenReturnsInjectedPlanner()
-		{
-			CollectionPlanner collectionPlanner = mock(CollectionPlanner.class);
-			CollectionExecutor collectionExecutor = mock(CollectionExecutor.class);
-			SnapshotBuilder snapshotBuilder = mock(SnapshotBuilder.class);
-			ProviderRegistry providerRegistry = mock(ProviderRegistry.class);
+        @Test
+        void givenInjectedCollectorEngineInFactory_whenCollectorEngineRetrieved_thenSameCollectorEngineImplIsReturned()
+        {
+            CollectionPlanner collectionPlanner = mock(CollectionPlanner.class);
+            CollectionExecutor collectionExecutor = mock(CollectionExecutor.class);
+            SnapshotBuilder snapshotBuilder = mock(SnapshotBuilder.class);
+            ProviderRegistry providerRegistry = mock(ProviderRegistry.class);
 
-			CollectorEngineImpl collectorEngine = newEngine(
-				collectionPlanner,
-				collectionExecutor,
-				snapshotBuilder,
-				providerRegistry);
+            CollectorEngineImpl expectedCollectorEngine = new CollectorEngineImpl(
+                collectionPlanner,
+                collectionExecutor,
+                snapshotBuilder,
+                providerRegistry);
 
-			assertThat(collectorEngine.getPlanner()).isSameAs(collectionPlanner);
-		}
-	}
+            CollectorEngineFactoryImpl collectorEngineFactory = new CollectorEngineFactoryImpl(expectedCollectorEngine);
 
-	@Nested
-	class GetExecutorTest
-	{
-		@Test
-		void whenCalled_thenReturnsInjectedExecutor()
-		{
-			CollectionPlanner collectionPlanner = mock(CollectionPlanner.class);
-			CollectionExecutor collectionExecutor = mock(CollectionExecutor.class);
-			SnapshotBuilder snapshotBuilder = mock(SnapshotBuilder.class);
-			ProviderRegistry providerRegistry = mock(ProviderRegistry.class);
+            CollectorEngineImpl actualCollectorEngine =
+                (CollectorEngineImpl) collectorEngineFactory.getCollectorEngine();
 
-			CollectorEngineImpl collectorEngine = newEngine(
-				collectionPlanner,
-				collectionExecutor,
-				snapshotBuilder,
-				providerRegistry);
+            assertThat(actualCollectorEngine).isSameAs(expectedCollectorEngine);
+            assertThat(actualCollectorEngine.getPlanner()).isSameAs(collectionPlanner);
+            assertThat(actualCollectorEngine.getExecutor()).isSameAs(collectionExecutor);
+            assertThat(actualCollectorEngine.getSnapshotBuilder()).isSameAs(snapshotBuilder);
+        }
 
-			assertThat(collectorEngine.getExecutor()).isSameAs(collectionExecutor);
-		}
-	}
+        @Test
+        void givenPlannerExecutorAndSnapshotBuilder_whenPublicConstructorCalled_thenInjectedInstancesAreRetained()
+            throws Exception
+        {
+            CollectionPlanner collectionPlanner = mock(CollectionPlanner.class);
+            CollectionExecutor collectionExecutor = mock(CollectionExecutor.class);
+            SnapshotBuilder snapshotBuilder = mock(SnapshotBuilder.class);
 
-	@Nested
-	class GetSnapshotBuilderTest
-	{
-		@Test
-		void whenCalled_thenReturnsInjectedSnapshotBuilder()
-		{
-			CollectionPlanner collectionPlanner = mock(CollectionPlanner.class);
-			CollectionExecutor collectionExecutor = mock(CollectionExecutor.class);
-			SnapshotBuilder snapshotBuilder = mock(SnapshotBuilder.class);
-			ProviderRegistry providerRegistry = mock(ProviderRegistry.class);
+            CollectorEngineImpl collectorEngine = withCloudProviderServiceHidden(
+                () -> new CollectorEngineImpl(collectionPlanner, collectionExecutor, snapshotBuilder));
 
-			CollectorEngineImpl collectorEngine = newEngine(
-				collectionPlanner,
-				collectionExecutor,
-				snapshotBuilder,
-				providerRegistry);
+            assertThat(collectorEngine.getPlanner()).isSameAs(collectionPlanner);
+            assertThat(collectorEngine.getExecutor()).isSameAs(collectionExecutor);
+            assertThat(collectorEngine.getSnapshotBuilder()).isSameAs(snapshotBuilder);
+            assertThat(collectorEngine.getLoadedCloudProviders()).isEmpty();
+        }
 
-			assertThat(collectorEngine.getSnapshotBuilder()).isSameAs(snapshotBuilder);
-		}
-	}
+        @Test
+        void givenNoArgsConstructor_whenCalled_thenDefaultCollaboratorsAreInitialized()
+            throws Exception
+        {
+            CollectorEngineImpl collectorEngine = withCloudProviderServiceHidden(CollectorEngineImpl::new);
 
-	@Nested
-	class GetLoadedCloudProvidersTest
-	{
-		@Test
-		void givenLoadedCloudProvidersExist_whenCalled_thenReturnsAllLoadedCloudProviders()
-		{
-			CollectionPlanner collectionPlanner = mock(CollectionPlanner.class);
-			CollectionExecutor collectionExecutor = mock(CollectionExecutor.class);
-			SnapshotBuilder snapshotBuilder = mock(SnapshotBuilder.class);
-			ProviderRegistry providerRegistry = mock(ProviderRegistry.class);
+            assertThat(collectorEngine.getPlanner()).isNotNull();
+            assertThat(collectorEngine.getExecutor()).isNotNull();
+            assertThat(collectorEngine.getSnapshotBuilder()).isNotNull();
+            assertThat(collectorEngine.getLoadedCloudProviders()).isEmpty();
+        }
+    }
 
-			when(providerRegistry.getLoadedCloudProviders()).thenReturn(List.of());
+    @Nested
+    class GetLoadedCloudProvidersTest
+    {
+        @Test
+        void givenLoadedCloudProvidersInRegistry_whenGetLoadedCloudProvidersCalled_thenProvidersAreReturnedAsSet()
+        {
+            ProviderRegistry providerRegistry = mock(ProviderRegistry.class);
 
-			CollectorEngineImpl collectorEngine = newEngine(
-				collectionPlanner,
-				collectionExecutor,
-				snapshotBuilder,
-				providerRegistry);
+            CloudProvider awsProvider = cloudProvider("aws", mock(CollectorRegistry.class));
+            CloudProvider azureProvider = cloudProvider("azure", mock(CollectorRegistry.class));
 
-			List<?> loadedCloudProviders = collectorEngine.getLoadedCloudProviders();
+            when(providerRegistry.getLoadedCloudProviders()).thenReturn(List.of(awsProvider, awsProvider, azureProvider));
 
-			assertThat(loadedCloudProviders).isEmpty();
-			verify(providerRegistry, times(1)).getLoadedCloudProviders();
-		}
-	}
+            CollectorEngineImpl collectorEngine = createCollectorEngineViaFactory(providerRegistry);
 
-	@Nested
-	class GetLoadedCollectorsTest
-	{
-		@Test
-		void givenProviderRegistryContainsCollectorRegistry_whenCalled_thenReturnsLoadedCollectorsForProvider()
-		{
-			CollectionPlanner collectionPlanner = mock(CollectionPlanner.class);
-			CollectionExecutor collectionExecutor = mock(CollectionExecutor.class);
-			SnapshotBuilder snapshotBuilder = mock(SnapshotBuilder.class);
-			ProviderRegistry providerRegistry = mock(ProviderRegistry.class);
-			CollectorRegistry collectorRegistry = mock(CollectorRegistry.class);
-			Collector vpcCollector = mock(Collector.class);
-			Collector subnetCollector = mock(Collector.class);
+            Set<CloudProvider> loadedProviders = collectorEngine.getLoadedCloudProviders();
 
-			when(providerRegistry.getLoadedCollectorRegistry(AWS)).thenReturn(Optional.of(collectorRegistry));
-			when(collectorRegistry.getCollectors()).thenReturn(List.of(vpcCollector, subnetCollector));
-			when(vpcCollector.getEntityType()).thenReturn("vpc");
-			when(subnetCollector.getEntityType()).thenReturn("subnet");
+            assertThat(loadedProviders).containsExactlyInAnyOrder(awsProvider, azureProvider);
+        }
 
-			CollectorEngineImpl collectorEngine = newEngine(
-				collectionPlanner,
-				collectionExecutor,
-				snapshotBuilder,
-				providerRegistry);
+        @Test
+        void givenNoLoadedCloudProvidersInRegistry_whenGetLoadedCloudProvidersCalled_thenEmptySetIsReturned()
+        {
+            ProviderRegistry providerRegistry = mock(ProviderRegistry.class);
+            when(providerRegistry.getLoadedCloudProviders()).thenReturn(List.of());
 
-			List<Collector> loadedCollectors = collectorEngine.getLoadedCollectors(AWS);
+            CollectorEngineImpl collectorEngine = createCollectorEngineViaFactory(providerRegistry);
 
-			assertThat(loadedCollectors)
-				.extracting(Collector::getEntityType)
-				.containsExactly("vpc", "subnet");
+            Set<CloudProvider> loadedProviders = collectorEngine.getLoadedCloudProviders();
 
-			verify(providerRegistry, times(1)).getLoadedCollectorRegistry(AWS);
-			verify(collectorRegistry, times(1)).getCollectors();
-		}
+            assertThat(loadedProviders).isEmpty();
+        }
 
-		@Test
-		void givenProviderRegistryDoesNotContainCollectorRegistry_whenCalled_thenReturnsEmptyList()
-		{
-			CollectionPlanner collectionPlanner = mock(CollectionPlanner.class);
-			CollectionExecutor collectionExecutor = mock(CollectionExecutor.class);
-			SnapshotBuilder snapshotBuilder = mock(SnapshotBuilder.class);
-			ProviderRegistry providerRegistry = mock(ProviderRegistry.class);
+        @Test
+        void givenReturnedProviderSetModified_whenGetLoadedCloudProvidersCalledAgain_thenEngineStateIsUnchanged()
+        {
+            ProviderRegistry providerRegistry = mock(ProviderRegistry.class);
 
-			when(providerRegistry.getLoadedCollectorRegistry(AWS)).thenReturn(Optional.empty());
+            CloudProvider awsProvider = cloudProvider("aws", mock(CollectorRegistry.class));
+            when(providerRegistry.getLoadedCloudProviders()).thenReturn(List.of(awsProvider));
 
-			CollectorEngineImpl collectorEngine = newEngine(
-				collectionPlanner,
-				collectionExecutor,
-				snapshotBuilder,
-				providerRegistry);
+            CollectorEngineImpl collectorEngine = createCollectorEngineViaFactory(providerRegistry);
 
-			List<Collector> loadedCollectors = collectorEngine.getLoadedCollectors(AWS);
+            Set<CloudProvider> firstResult = collectorEngine.getLoadedCloudProviders();
+            firstResult.clear();
 
-			assertThat(loadedCollectors).isEmpty();
-			verify(providerRegistry, times(1)).getLoadedCollectorRegistry(AWS);
-		}
+            Set<CloudProvider> secondResult = collectorEngine.getLoadedCloudProviders();
 
-		@Test
-		void givenCollectorRegistryContainsNoCollectors_whenCalled_thenReturnsEmptyList()
-		{
-			CollectionPlanner collectionPlanner = mock(CollectionPlanner.class);
-			CollectionExecutor collectionExecutor = mock(CollectionExecutor.class);
-			SnapshotBuilder snapshotBuilder = mock(SnapshotBuilder.class);
-			ProviderRegistry providerRegistry = mock(ProviderRegistry.class);
-			CollectorRegistry collectorRegistry = mock(CollectorRegistry.class);
+            assertThat(firstResult).isEmpty();
+            assertThat(secondResult).containsExactly(awsProvider);
+        }
+    }
 
-			when(providerRegistry.getLoadedCollectorRegistry(AWS)).thenReturn(Optional.of(collectorRegistry));
-			when(collectorRegistry.getCollectors()).thenReturn(List.of());
+    @Nested
+    class GetLoadedCloudProviderTest
+    {
+        @Test
+        void givenProviderExists_whenGetLoadedCloudProviderCalled_thenProviderIsReturned()
+        {
+            ProviderRegistry providerRegistry = mock(ProviderRegistry.class);
 
-			CollectorEngineImpl collectorEngine = newEngine(
-				collectionPlanner,
-				collectionExecutor,
-				snapshotBuilder,
-				providerRegistry);
+            CloudProvider awsProvider = cloudProvider("aws", mock(CollectorRegistry.class));
+            when(providerRegistry.getLoadedCloudProvider("aws")).thenReturn(Optional.of(awsProvider));
 
-			List<Collector> loadedCollectors = collectorEngine.getLoadedCollectors(AWS);
+            CollectorEngineImpl collectorEngine = createCollectorEngineViaFactory(providerRegistry);
 
-			assertThat(loadedCollectors).isEmpty();
-			verify(providerRegistry, times(1)).getLoadedCollectorRegistry(AWS);
-			verify(collectorRegistry, times(1)).getCollectors();
-		}
+            Optional<CloudProvider> result = collectorEngine.getLoadedCloudProvider("aws");
 
-		@Test
-		void givenCollectorRegistryReturnsCollection_whenReturnedListIsModified_thenUnderlyingRegistryDataIsNotAffected()
-		{
-			CollectionPlanner collectionPlanner = mock(CollectionPlanner.class);
-			CollectionExecutor collectionExecutor = mock(CollectionExecutor.class);
-			SnapshotBuilder snapshotBuilder = mock(SnapshotBuilder.class);
-			ProviderRegistry providerRegistry = mock(ProviderRegistry.class);
-			CollectorRegistry collectorRegistry = mock(CollectorRegistry.class);
-			Collector vpcCollector = mock(Collector.class);
-			Collection<Collector> registryCollectors = List.of(vpcCollector);
+            assertThat(result).containsSame(awsProvider);
+        }
 
-			when(providerRegistry.getLoadedCollectorRegistry(AWS)).thenReturn(Optional.of(collectorRegistry));
-			when(collectorRegistry.getCollectors()).thenReturn(registryCollectors);
+        @Test
+        void givenProviderDoesNotExist_whenGetLoadedCloudProviderCalled_thenEmptyOptionalIsReturned()
+        {
+            ProviderRegistry providerRegistry = mock(ProviderRegistry.class);
+            when(providerRegistry.getLoadedCloudProvider("aws")).thenReturn(Optional.empty());
 
-			CollectorEngineImpl collectorEngine = newEngine(
-				collectionPlanner,
-				collectionExecutor,
-				snapshotBuilder,
-				providerRegistry);
+            CollectorEngineImpl collectorEngine = createCollectorEngineViaFactory(providerRegistry);
 
-			List<Collector> firstResult = collectorEngine.getLoadedCollectors(AWS);
-			firstResult.clear();
+            Optional<CloudProvider> result = collectorEngine.getLoadedCloudProvider("aws");
 
-			List<Collector> secondResult = collectorEngine.getLoadedCollectors(AWS);
+            assertThat(result).isEmpty();
+        }
+    }
 
-			assertThat(firstResult).isEmpty();
-			assertThat(secondResult).hasSize(1);
-			verify(providerRegistry, times(2)).getLoadedCollectorRegistry(AWS);
-			verify(collectorRegistry, times(2)).getCollectors();
-		}
-	}
+    @Nested
+    class GetRegisteredEntityTypesTest
+    {
+        @Test
+        void givenNullProviderId_whenGetRegisteredEntityTypesCalled_thenThrowsNullPointerException()
+        {
+            CollectorEngineImpl collectorEngine = createCollectorEngineViaFactory(mock(ProviderRegistry.class));
+
+            assertThatThrownBy(() -> collectorEngine.getRegisteredEntityTypes(null))
+                .isInstanceOf(NullPointerException.class);
+        }
+
+        @Test
+        void givenEmptyProviderId_whenGetRegisteredEntityTypesCalled_thenThrowsIllegalArgumentException()
+        {
+            CollectorEngineImpl collectorEngine = createCollectorEngineViaFactory(mock(ProviderRegistry.class));
+
+            assertThatThrownBy(() -> collectorEngine.getRegisteredEntityTypes(""))
+                .isInstanceOf(IllegalArgumentException.class);
+        }
+
+        @Test
+        void givenProviderNotFound_whenGetRegisteredEntityTypesCalled_thenThrowsIllegalStateException()
+        {
+            ProviderRegistry providerRegistry = mock(ProviderRegistry.class);
+            when(providerRegistry.getLoadedCloudProvider("aws")).thenReturn(Optional.empty());
+
+            CollectorEngineImpl collectorEngine = createCollectorEngineViaFactory(providerRegistry);
+
+            assertThatThrownBy(() -> collectorEngine.getRegisteredEntityTypes("aws"))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("provider: aws not found");
+        }
+
+        @Test
+        void givenProviderWithNullCollectorRegistry_whenGetRegisteredEntityTypesCalled_thenNullIsReturned()
+        {
+            ProviderRegistry providerRegistry = mock(ProviderRegistry.class);
+
+            CloudProvider awsProvider = cloudProvider("aws", null);
+            when(providerRegistry.getLoadedCloudProvider("aws")).thenReturn(Optional.of(awsProvider));
+
+            CollectorEngineImpl collectorEngine = createCollectorEngineViaFactory(providerRegistry);
+
+            Set<String> registeredEntityTypes = collectorEngine.getRegisteredEntityTypes("aws");
+
+            assertThat(registeredEntityTypes).isNull();
+        }
+
+        @Test
+        void givenProviderWithCollectorRegistry_whenGetRegisteredEntityTypesCalled_thenRegisteredEntityTypesAreReturned()
+        {
+            ProviderRegistry providerRegistry = mock(ProviderRegistry.class);
+            CollectorRegistry collectorRegistry = mock(CollectorRegistry.class);
+
+            CloudProvider awsProvider = cloudProvider("aws", collectorRegistry);
+
+            when(providerRegistry.getLoadedCloudProvider("aws")).thenReturn(Optional.of(awsProvider));
+            when(collectorRegistry.getRegisteredEntityTypes()).thenReturn(Set.of("vpc", "subnet"));
+
+            CollectorEngineImpl collectorEngine = createCollectorEngineViaFactory(providerRegistry);
+
+            Set<String> registeredEntityTypes = collectorEngine.getRegisteredEntityTypes("aws");
+
+            assertThat(registeredEntityTypes).containsExactlyInAnyOrder("vpc", "subnet");
+        }
+    }
+
+    private CollectorEngineImpl createCollectorEngineViaFactory(ProviderRegistry providerRegistry)
+    {
+        CollectionPlanner collectionPlanner = mock(CollectionPlanner.class);
+        CollectionExecutor collectionExecutor = mock(CollectionExecutor.class);
+        SnapshotBuilder snapshotBuilder = mock(SnapshotBuilder.class);
+
+        CollectorEngineImpl collectorEngine = new CollectorEngineImpl(
+            collectionPlanner,
+            collectionExecutor,
+            snapshotBuilder,
+            providerRegistry);
+
+        CollectorEngineFactoryImpl.setCollectorEngineSupplier(() -> collectorEngine);
+
+        return (CollectorEngineImpl) CollectorEngineFactoryImpl.getInstance().getCollectorEngine();
+    }
+
+    private CloudProvider cloudProvider(String providerId, CollectorRegistry collectorRegistry)
+    {
+        return new TestCloudProvider(providerId, collectorRegistry);
+    }
+
+    private <T> T withCloudProviderServiceHidden(ThrowingSupplier<T> supplier) throws Exception
+    {
+        Thread currentThread = Thread.currentThread();
+        ClassLoader originalContextClassLoader = currentThread.getContextClassLoader();
+
+        try
+        {
+            currentThread.setContextClassLoader(
+                new CloudProviderServiceHidingClassLoader(originalContextClassLoader));
+            return supplier.get();
+        }
+        finally
+        {
+            currentThread.setContextClassLoader(originalContextClassLoader);
+        }
+    }
+
+    @FunctionalInterface
+    private interface ThrowingSupplier<T>
+    {
+        T get() throws Exception;
+    }
+
+    private static final class CloudProviderServiceHidingClassLoader extends ClassLoader
+    {
+        private CloudProviderServiceHidingClassLoader(ClassLoader parent)
+        {
+            super(parent);
+        }
+
+        @Override
+        public URL getResource(String name)
+        {
+            if (CLOUD_PROVIDER_SERVICE_FILE.equals(name))
+            {
+                return null;
+            }
+            return super.getResource(name);
+        }
+
+        @Override
+        public Enumeration<URL> getResources(String name) throws IOException
+        {
+            if (CLOUD_PROVIDER_SERVICE_FILE.equals(name))
+            {
+                return Collections.emptyEnumeration();
+            }
+            return super.getResources(name);
+        }
+    }
+
+    private static final class TestCloudProvider extends CloudProvider
+    {
+        private TestCloudProvider(String providerId, CollectorRegistry collectorRegistry)
+        {
+            super(
+                ProviderInfo.builder()
+                    .providerIdentifier(ProviderIdentifier.builder()
+                        .id(providerId)
+                        .version("1.0.0")
+                        .build())
+                    .name(providerId + "-provider")
+                    .build(),
+                collectorRegistry);
+        }
+
+        @Override
+        public Optional<Collector> getConnectedCollector(String entityType) throws ProviderException
+        {
+            return Optional.empty();
+        }
+    }
 }

@@ -1,121 +1,161 @@
 package io.coherity.estoria.collector.engine.impl.dao;
 
-import java.nio.file.Files;
-import java.nio.file.Path;
+import java.io.IOException;
+import java.io.InputStream;
+import java.nio.charset.StandardCharsets;
 import java.sql.Connection;
 import java.sql.DriverManager;
+import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.sql.Statement;
 
+import io.coherity.estoria.collector.engine.impl.config.ApplicationConfig;
 import lombok.extern.slf4j.Slf4j;
 
-/**
- * Initializes the local H2 database once per JVM, and only creates tables
- * when the database has not yet been created on disk.
- */
 @Slf4j
 class H2DatabaseInitializer
 {
-	private static final String JDBC_URL = "jdbc:h2:./collector-db";
-	private static final String USER = "sa";
-	private static final String PASSWORD = "";
+    private static final String SCHEMA_RESOURCE_PATH = "db/h2/schema.sql";
 
-	// H2 will typically create one of these files for the local database
-	private static final Path MV_DB_FILE = Path.of("collector-db.mv.db");
-	private static final Path H2_DB_FILE = Path.of("collector-db.h2.db");
+    private static volatile boolean initialized = false;
 
-	private static volatile boolean initialized = false;
+    static void init()
+    {
+        if (initialized)
+        {
+            log.debug("H2 database already initialized; skipping initialization.");
+            return;
+        }
 
-	static void init()
-	{
-		if (initialized)
-		{
-			log.debug("H2 database already initialized; skipping initialization.");
-			return;
-		}
+        synchronized (H2DatabaseInitializer.class)
+        {
+            if (initialized)
+            {
+                log.debug("H2 database already initialized inside synchronized block; skipping initialization.");
+                return;
+            }
 
-		synchronized (H2DatabaseInitializer.class)
-		{
-			if (initialized)
-			{
-				log.debug("H2 database already initialized inside synchronized block; skipping initialization.");
-				return;
-			}
+            log.debug("Initializing H2 database using schema resource: {}", SCHEMA_RESOURCE_PATH);
 
-			boolean dbExists = Files.exists(MV_DB_FILE) || Files.exists(H2_DB_FILE);
-			if (!dbExists)
-			{
-				log.debug("No existing H2 database files found; creating schema at URL: {}", JDBC_URL);
-				createSchema();
-			}
-			else
-			{
-				log.debug("Detected existing H2 database files; skipping schema creation.");
-			}
+            String schema = loadSchemaFromClasspath();
+            applySchema(schema);
+            applyMigrations();
 
-			initialized = true;
-			log.debug("H2 database initialization complete.");
-		}
-	}
+            initialized = true;
+            log.debug("H2 database initialization complete.");
+        }
+    }
 
-	private static void createSchema()
-	{
-		try (Connection conn = DriverManager.getConnection(JDBC_URL, USER, PASSWORD);
-				var stmt = conn.createStatement())
-		{
-			log.debug("Creating H2 schema (tables: collection_run, collection_result, collected_entity).");
-			// Run the same DDL statements that were previously executed in each DAO
-			stmt.execute("""
-				    CREATE TABLE IF NOT EXISTS collection_run (
-				        run_id varchar(128) primary key,
-				        provider_id varchar(128) not null,
-				        collection_scope varchar(128) not null,
-				        status varchar(32) not null,
-				        run_start_time timestamp with time zone not null,
-				        run_end_time timestamp with time zone,
-				        total_collector_count bigint not null default 0,
-				        successful_collector_count bigint not null default 0,
-				        failed_collector_count bigint not null default 0,
-				        total_entity_count bigint not null default 0,
-				        failure_message clob,
-				        failure_exception_class varchar(512)
-				    )
-				""");
+    private static String loadSchemaFromClasspath()
+    {
+        ClassLoader classLoader = Thread.currentThread().getContextClassLoader();
 
-			stmt.execute("""
-				    CREATE TABLE IF NOT EXISTS collection_result (
-				        result_id varchar(128) primary key,
-				        run_id varchar(128) not null,
-				        collector_id varchar(128) not null,
-				        entity_type varchar(256) not null,
-				        status varchar(32) not null,
-				        entity_count bigint not null default 0,
-				        collection_start_time timestamp with time zone not null,
-				        collection_end_time timestamp with time zone,
-				        failure_message clob,
-				        failure_exception_class varchar(512)
-				    )
-				""");
+        try (InputStream inputStream = classLoader.getResourceAsStream(SCHEMA_RESOURCE_PATH))
+        {
+            if (inputStream == null)
+            {
+                throw new RuntimeException(
+                    "Schema resource not found on classpath: " + SCHEMA_RESOURCE_PATH);
+            }
 
-			stmt.execute("""
-				    CREATE TABLE IF NOT EXISTS collected_entity (
-				        result_id varchar(128) not null,
-				        entity_ordinal bigint not null,
-				        entity_id varchar(512),
-				        entity_type varchar(256) not null,
-				        payload_json clob not null,
-				        constraint pk_collected_entity primary key (result_id, entity_ordinal)
-				    )
-				""");
-		}
-		catch (SQLException e)
-		{
-			log.error("Failed to initialize H2 schema", e);
-			throw new RuntimeException("Failed to initialize H2 schema", e);
-		}
-	}
+            String schema = new String(inputStream.readAllBytes(), StandardCharsets.UTF_8);
+            log.debug("Loaded schema resource ({} bytes): {}", schema.length(), SCHEMA_RESOURCE_PATH);
+            return schema;
+        }
+        catch (IOException e)
+        {
+            throw new RuntimeException(
+                "Failed to read schema resource from classpath: " + SCHEMA_RESOURCE_PATH, e);
+        }
+    }
 
-	private H2DatabaseInitializer()
-	{
-		// utility
-	}
+    private static void applySchema(String schema)
+    {
+        String jdbcUrl = ApplicationConfig.getDBJDBCUrlString();
+        String user = ApplicationConfig.getDBUserString();
+        String pass = ApplicationConfig.getDBPassString();
+
+        log.debug("Applying schema to H2 database at URL: {}", jdbcUrl);
+
+        try (Connection conn = DriverManager.getConnection(jdbcUrl, user, pass);
+            Statement stmt = conn.createStatement())
+        {
+            for (String statement : splitStatements(schema))
+            {
+                String trimmed = statement.strip();
+                if (!trimmed.isEmpty())
+                {
+                    log.debug("Executing DDL statement: {}", trimmed.substring(0, Math.min(trimmed.length(), 80)));
+                    stmt.execute(trimmed);
+                }
+            }
+
+            log.debug("Schema applied successfully.");
+        }
+        catch (SQLException e)
+        {
+            log.error("Failed to apply H2 schema", e);
+            throw new RuntimeException("Failed to apply H2 schema", e);
+        }
+    }
+
+    private static void applyMigrations()
+    {
+        String jdbcUrl = ApplicationConfig.getDBJDBCUrlString();
+        String user = ApplicationConfig.getDBUserString();
+        String pass = ApplicationConfig.getDBPassString();
+
+        log.debug("Checking for required schema migrations.");
+
+        try (Connection conn = DriverManager.getConnection(jdbcUrl, user, pass);
+            Statement stmt = conn.createStatement())
+        {
+            if (!columnExists(conn, "COLLECTION_RUN", "PROVIDER_CONTEXT"))
+            {
+                log.info("Migration required: adding provider_context to collection_run.");
+                try
+                {
+                    stmt.execute(
+                        "ALTER TABLE collection_run ALTER COLUMN collection_scope RENAME TO provider_context");
+                    log.info("Migration complete: collection_scope renamed to provider_context.");
+                }
+                catch (SQLException renameEx)
+                {
+                    log.warn(
+                        "Could not rename collection_scope; adding provider_context as new column.", renameEx);
+                    stmt.execute(
+                        "ALTER TABLE collection_run ADD COLUMN IF NOT EXISTS provider_context clob");
+                    log.info("Migration complete: provider_context column added.");
+                }
+            }
+            else
+            {
+                log.debug("No migrations required; schema is up to date.");
+            }
+        }
+        catch (SQLException e)
+        {
+            log.error("Failed to apply H2 migrations", e);
+            throw new RuntimeException("Failed to apply H2 migrations", e);
+        }
+    }
+
+    private static boolean columnExists(Connection conn, String tableName, String columnName)
+        throws SQLException
+    {
+        try (ResultSet rs = conn.getMetaData().getColumns(null, null, tableName, columnName))
+        {
+            return rs.next();
+        }
+    }
+
+    private static String[] splitStatements(String schema)
+    {
+        return schema.split(";");
+    }
+
+    private H2DatabaseInitializer()
+    {
+        // utility
+    }
 }

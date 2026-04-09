@@ -1,4 +1,4 @@
-package io.coherity.estoria.collector.engine.impl.cli;
+package io.coherity.estoria.collector.engine.impl.config;
 
 import org.apache.commons.configuration2.CompositeConfiguration;
 
