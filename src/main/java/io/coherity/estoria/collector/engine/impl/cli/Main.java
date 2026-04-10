@@ -1,6 +1,7 @@
 package io.coherity.estoria.collector.engine.impl.cli;
 
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Optional;
 import java.util.Properties;
@@ -13,6 +14,7 @@ import org.apache.commons.cli.HelpFormatter;
 import org.apache.commons.cli.Option;
 import org.apache.commons.cli.Options;
 import org.apache.commons.cli.ParseException;
+import org.apache.commons.lang3.StringUtils;
 
 import io.coherity.estoria.collector.engine.api.CollectionExecutor;
 import io.coherity.estoria.collector.engine.api.CollectionPlan;
@@ -33,6 +35,7 @@ import io.coherity.estoria.collector.spi.Collector;
 import io.coherity.estoria.collector.spi.CollectorContext;
 import io.coherity.estoria.collector.spi.CollectorInfo;
 import io.coherity.estoria.collector.spi.CollectorRegistry;
+import io.coherity.estoria.collector.spi.TypeSet;
 import io.coherity.estoria.collector.spi.ProviderContext;
 import io.coherity.estoria.collector.spi.ProviderInfo;
 import lombok.extern.slf4j.Slf4j;
@@ -232,6 +235,9 @@ public class Main
             options.addOption(Option.builder()
                 .longOpt("collector-arg").hasArgs().valueSeparator('=').argName("key=value")
                 .desc("Collector argument as key=value (may be repeated)").build());
+            options.addOption(Option.builder("tsf")
+                    .longOpt("type-set-file").hasArg().argName("FILE")
+                    .desc("File containing target entity types").build());
             options.addOption(Option.builder("t")
                 .longOpt("target-types").hasArg().argName("LIST")
                 .desc("Comma-separated list of target entity types").build());
@@ -269,6 +275,7 @@ public class Main
             }
 
             String collectorContextFile = cmd.getOptionValue("collector-context-file");
+            String typeSetFile      = cmd.getOptionValue("type-set-file");
             String targetTypesOpt       = cmd.getOptionValue("target-types");
             String skipTypesOpt         = cmd.getOptionValue("skip-types");
             boolean skipAllDeps         = cmd.hasOption("skip-all-dependencies");
@@ -291,23 +298,37 @@ public class Main
                     CliCollectorContextFactory.overlayCollectorArgs(collectorContext, collectorArgs);
             }
 
-            Set<String> targetTypes = CliUtils.parseCsvToSet(targetTypesOpt);
+            Set<String> mergedTargetTypes = new HashSet<String>();
+            if(StringUtils.isNotEmpty(typeSetFile))
+            {
+            	TypeSet targetEntityTypeSet = CliUtils.readJsonIfPresent(typeSetFile, TypeSet.class);
+            	if(targetEntityTypeSet != null && targetEntityTypeSet.getEntityTypes() != null)
+            	{
+                	mergedTargetTypes.addAll(targetEntityTypeSet.getEntityTypes());
+            	}
+            }
+            Set<String> parsedTargetTypes = CliUtils.parseCsvToSet(targetTypesOpt);
+            if(parsedTargetTypes != null)
+            {
+            	mergedTargetTypes.addAll(parsedTargetTypes);
+            }
+            
             Set<String> skipTypes   = CliUtils.parseCsvToSet(skipTypesOpt);
 
             CollectionPlan plan;
-            if (targetTypes != null && !targetTypes.isEmpty())
+            if(!mergedTargetTypes.isEmpty())
             {
                 if (skipAllDeps)
                 {
-                    plan = planner.plan(providerId, targetTypes, true, collectorContext);
+                    plan = planner.plan(providerId, mergedTargetTypes, true, collectorContext);
                 }
                 else if (skipTypes != null && !skipTypes.isEmpty())
                 {
-                    plan = planner.plan(providerId, targetTypes, skipTypes, collectorContext);
+                    plan = planner.plan(providerId, mergedTargetTypes, skipTypes, collectorContext);
                 }
                 else
                 {
-                    plan = planner.plan(providerId, targetTypes, false, collectorContext);
+                    plan = planner.plan(providerId, mergedTargetTypes, false, collectorContext);
                 }
             }
             else

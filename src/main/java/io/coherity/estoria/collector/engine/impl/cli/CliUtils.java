@@ -1,7 +1,9 @@
 package io.coherity.estoria.collector.engine.impl.cli;
 
 import java.io.BufferedWriter;
+import java.io.FileNotFoundException;
 import java.io.IOException;
+import java.io.InputStream;
 import java.io.OutputStreamWriter;
 import java.io.Writer;
 import java.nio.charset.StandardCharsets;
@@ -45,13 +47,35 @@ public class CliUtils
         {
             return null;
         }
-        String json = readAllFromFile(file);
-        return JsonSupport.fromJson(json, type);
+        try
+        {
+            String json = readAllFromFile(file);
+            return JsonSupport.fromJson(json, type);
+        }
+        catch(FileNotFoundException fnfe)
+        {
+        	log.warn("could not find file: " + file, fnfe);
+        }
+        return null;
     }
 
     public static String readAllFromFile(String path) throws IOException
     {
-        return Files.readString(Path.of(path), StandardCharsets.UTF_8);
+        if (Files.exists(Path.of(path)))
+        {
+            return Files.readString(Path.of(path), StandardCharsets.UTF_8);
+        }
+
+        InputStream is = Thread.currentThread()
+            .getContextClassLoader()
+            .getResourceAsStream(path);
+
+        if (is != null)
+        {
+            return new String(is.readAllBytes(), StandardCharsets.UTF_8);
+        }
+
+        throw new FileNotFoundException("Not found on filesystem or classpath: " + path);
     }
 
     public static String readAllFromStdin() throws IOException
