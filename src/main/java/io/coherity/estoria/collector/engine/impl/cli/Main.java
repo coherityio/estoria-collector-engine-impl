@@ -6,6 +6,8 @@ import java.util.List;
 import java.util.Optional;
 import java.util.Properties;
 import java.util.Set;
+import java.util.TreeSet;
+import java.util.stream.Collectors;
 
 import org.apache.commons.cli.CommandLine;
 import org.apache.commons.cli.CommandLineParser;
@@ -35,9 +37,9 @@ import io.coherity.estoria.collector.spi.Collector;
 import io.coherity.estoria.collector.spi.CollectorContext;
 import io.coherity.estoria.collector.spi.CollectorInfo;
 import io.coherity.estoria.collector.spi.CollectorRegistry;
-import io.coherity.estoria.collector.spi.TypeSet;
 import io.coherity.estoria.collector.spi.ProviderContext;
 import io.coherity.estoria.collector.spi.ProviderInfo;
+import io.coherity.estoria.collector.spi.TypeSet;
 import lombok.extern.slf4j.Slf4j;
 
 @Slf4j
@@ -71,6 +73,7 @@ public class Main
                 case "snapshot"   -> new SnapshotCommand().run(commandArgs);
                 case "providers"  -> new ProvidersCommand().run(commandArgs);
                 case "collectors" -> new CollectorsCommand().run(commandArgs);
+                case "collector-args" -> new CollectorArgsCommand().run(commandArgs);
                 case "-h", "--help", "help" -> {
                     printGlobalHelp();
                     yield 0;
@@ -105,6 +108,7 @@ public class Main
                 snapshot    Build a provider snapshot for a given runId.
                 providers   List all loaded cloud providers.
                 collectors  List collectors for a given provider.
+                collector-args  List accepted collector-args for a given entity-type. If no entity-type is provided, then across all collectors.
 
               Use:
                 estoria-collector plan --help
@@ -113,6 +117,7 @@ public class Main
                 estoria-collector snapshot --help
                 estoria-collector providers
                 estoria-collector collectors --help
+                estoria-collector collector-args --help
               for command-specific options.
             """);
     }
@@ -216,6 +221,100 @@ public class Main
         }
     }
 
+    
+    // -------------------------------------------------------------------------
+    // Collector Args
+    // -------------------------------------------------------------------------
+    
+    @Slf4j
+    static class CollectorArgsCommand
+    {
+        int run(String[] args) throws Exception
+        {
+            Options options = new Options();
+            options.addOption(Option.builder("p")
+                .longOpt("provider-id").hasArg().argName("ID")
+                .desc("Provider identifier (required)").build());
+            options.addOption(Option.builder("e")
+                .longOpt("entity-type").hasArg().argName("TYPE")
+                .desc("Entity type to inspect for a single collector (optional)").build());
+            options.addOption(Option.builder("h").longOpt("help").desc("Show help").build());
+            options.addOption(
+                Option.builder()
+                    .longOpt("pretty")
+                    .desc("Pretty-print JSON output (2-space indentation)")
+                    .build());
+
+            CommandLineParser parser = new DefaultParser();
+            CommandLine cmd = parser.parse(options, args);
+
+            if (cmd.hasOption("help"))
+            {
+                new HelpFormatter().printHelp("estoria-collector collector-args", options, true);
+                return 0;
+            }
+
+            String providerId = cmd.getOptionValue("provider-id");
+            if (providerId == null || providerId.isBlank())
+            {
+                System.err.println("Missing required option: --provider-id");
+                new HelpFormatter().printHelp("estoria-collector collector-args", options, true);
+                return 1;
+            }
+
+            String entityType = cmd.getOptionValue("entity-type");
+
+            CollectorEngine engine = CliUtils.createEngine();
+            Optional<CloudProvider> opCloudProvider = engine.getLoadedCloudProvider(providerId);
+            if (opCloudProvider.isEmpty())
+            {
+                System.err.println("Provider not found: " + providerId);
+                return 1;
+            }
+
+            CollectorRegistry collectorRegistry = opCloudProvider.get().getCollectorRegistry();
+            if (collectorRegistry == null)
+            {
+                System.err.println("Collector registry not initialized for provider: " + providerId);
+                return 1;
+            }
+
+            Set<String> supportedContextAttributes;
+
+            if (entityType != null && !entityType.isBlank())
+            {
+                Optional<Collector> opCollector = collectorRegistry.getRegisteredCollector(entityType);
+                if (opCollector.isEmpty())
+                {
+                    System.err.println("Collector not found for providerId=" + providerId + ", entityType=" + entityType);
+                    return 1;
+                }
+
+                CollectorInfo info = opCollector.get().getCollectorInfo();
+
+                supportedContextAttributes =
+                    info == null || info.getSupportedContextAttributes() == null
+                        ? Set.of()
+                        : new TreeSet<>(info.getSupportedContextAttributes());
+            }
+            else
+            {
+                Set<Collector> collectors = collectorRegistry.getRegisteredCollectors();
+
+                supportedContextAttributes = collectors.stream()
+                    .map(Collector::getCollectorInfo)
+                    .filter(info -> info != null)
+                    .filter(info -> info.getSupportedContextAttributes() != null)
+                    .flatMap(info -> info.getSupportedContextAttributes().stream())
+                    .collect(Collectors.toCollection(TreeSet::new));
+            }
+
+            boolean prettyFormat = cmd.hasOption("pretty");
+            System.out.println(JsonSupport.toJson(supportedContextAttributes, prettyFormat));
+            return 0;
+        }
+    }
+    
     // -------------------------------------------------------------------------
     // plan
     // -------------------------------------------------------------------------
@@ -232,8 +331,12 @@ public class Main
             options.addOption(Option.builder("ccf")
                 .longOpt("collector-context-file").hasArg().argName("CCFILE")
                 .desc("Path to JSON file containing CollectorContext").build());
-            options.addOption(Option.builder()
-                .longOpt("collector-arg").hasArgs().valueSeparator('=').argName("key=value")
+            options.addOption(
+            		Option.builder()
+            			.longOpt("collector-arg")
+            			.hasArgs()
+            			.valueSeparator('=')
+            			.argName("key=value")
                 .desc("Collector argument as key=value (may be repeated)").build());
             options.addOption(Option.builder("tsf")
                     .longOpt("type-set-file").hasArg().argName("FILE")
@@ -291,12 +394,19 @@ public class Main
                 collectorContext = CollectorContext.builder().build();
             }
 
-            String[] collectorArgs = cmd.getOptionValues("collector-arg");
-            if (collectorArgs != null && collectorArgs.length > 0)
+            Properties collectorArgProperties = cmd.getOptionProperties("collector-arg");
+            if (!collectorArgProperties.isEmpty())
             {
-                collectorContext =
-                    CliCollectorContextFactory.overlayCollectorArgs(collectorContext, collectorArgs);
-            }
+              collectorContext =
+                  CliCollectorContextFactory.overlayCollectorArgs(collectorContext, collectorArgProperties);
+            }            
+            
+//            String[] collectorArgs = cmd.getOptionValues("collector-arg");
+//            if (collectorArgs != null && collectorArgs.length > 0)
+//            {
+//                collectorContext =
+//                    CliCollectorContextFactory.overlayCollectorArgs(collectorContext, collectorArgs);
+//            }
 
             Set<String> mergedTargetTypes = new HashSet<String>();
             if(StringUtils.isNotEmpty(typeSetFile))

@@ -1,265 +1,486 @@
 # Estoria Collector Engine CLI
 
-This CLI wraps the Estoria Collector Engine and exposes several commands:
+The Estoria Collector Engine CLI wraps `Main.java` and exposes commands for planning, execution, inspection, and snapshot generation.
 
-- `plan` – build a collection plan for a provider.
-- `execute` – execute a collection plan and produce a run summary.
-- `snapshot` – rebuild a provider snapshot from stored run results.
-- `providers` – list all loaded cloud providers.
-- `collectors` – list collectors for a specific provider.
+## Commands
 
-The launcher script is `collector-cli` (Unix) or `collector-cli.bat` (Windows). The distribution ZIP provides a layout:
+- `plan` - build a collection plan for a provider
+- `execute` - execute a previously generated plan
+- `snapshot` - rebuild a provider snapshot from stored results
+- `providers` - list loaded cloud providers
+- `collectors` - list collectors for a provider
 
-- `bin/` – wrapper scripts (`collector-cli`, `collector-cli.bat`).
-- `lib/` – application JAR and all dependencies.
-- `conf/` – configuration files (e.g. `log4j2.xml`).
-- `docs/` – this documentation.
-
----
-
-## Global Usage
-
-```bash
-collector-cli <command> [options]
-```
-
-Commands:
-
-- `plan` – build and optionally write a `CollectionPlan` as JSON.
-- `execute` – run a previously generated `CollectionPlan`.
-- `snapshot` – build a provider snapshot for a given run id.
-- `providers` – list loaded cloud providers as JSON.
-- `collectors` – list collectors for a given provider as JSON.
-
-For command-specific help:
-
-```bash
-collector-cli plan --help
-collector-cli execute --help
-collector-cli snapshot --help
-collector-cli providers
-collector-cli collectors --help
-```
-
-On Windows PowerShell:
+On Windows, use:
 
 ```powershell
-./collector-cli.bat plan --help
-./collector-cli.bat execute --help
-./collector-cli.bat snapshot --help
-./collector-cli.bat providers
-./collector-cli.bat collectors --help
+.\collector-cli.bat <command> [options]
+```
+
+The distribution ZIP contains:
+
+- `bin/` - launch scripts
+- `lib/` - application JAR and dependencies
+- `conf/` - runtime configuration such as `log4j2.xml`
+- `docs/` - this file
+
+---
+
+## Quick Start
+
+### 1. List providers
+
+```powershell
+.\collector-cli.bat providers
+```
+
+### 2. List AWS collectors
+
+```powershell
+.\collector-cli.bat collectors --provider-id aws
+```
+
+### 3. Build a plan
+
+```powershell
+.\collector-cli.bat plan `
+  --provider-id aws `
+  --scope-file .\scope.json `
+  --provider-arg profile=dev `
+  --provider-arg region=us-east-1 `
+  --target-types Vpc,Subnet `
+  --output .\plan.json
+```
+
+### 4. Execute the plan
+
+```powershell
+.\collector-cli.bat execute `
+  --provider-id aws `
+  --plan-file .\plan.json `
+  --context-file .\provider-context.json `
+  > .\run-summary.json
+```
+
+### 5. Rebuild a snapshot
+
+```powershell
+.\collector-cli.bat snapshot --run-id 12345
 ```
 
 ---
 
-## `plan` Command
+## Command Reference
 
-Builds a collection plan for a specific provider and scope.
+## `plan`
 
-**Options:**
+Builds a `CollectionPlan` for a provider and selected entity types.
 
-- `-p, --provider-id <ID>` (required) – provider identifier.
-- `-s, --scope-file <FILE>` – JSON file containing a `CollectionScope`.
-- `--provider-arg key=value` – additional scope/provider arguments (repeatable).
-- `-t, --target-types <LIST>` – comma-separated list of target entity types.
-- `-k, --skip-types <LIST>` – comma-separated list of entity types to skip.
-- `--skip-all-dependencies` – skip all dependency entity types.
-- `-o, --output <FILE>` – write plan JSON to a file (default: stdout).
-- `-h, --help` – show command help.
+Typical inputs:
+- provider id
+- scope file
+- provider arguments
+- target types
+- skip types
+- optional output file
 
-**Typical JSON scope file** (`scope.json`):
+Example:
+
+```powershell
+.\collector-cli.bat plan `
+  --provider-id aws `
+  --scope-file .\scope.json `
+  --provider-arg profile=dev `
+  --provider-arg region=us-east-1 `
+  --target-types CloudWatchLogGroup,CloudTrailTrail `
+  --output .\plan.json
+```
+
+If your build exposes a type-set option, use the matching CLI flag from `--help` and pass a JSON type-set file as shown later in this document.
+
+Get help:
+
+```powershell
+.\collector-cli.bat plan --help
+```
+
+---
+
+## `execute`
+
+Executes a previously generated `CollectionPlan`.
+
+Inputs:
+- `--provider-id`
+- `--plan-file` or `--plan-stdin`
+- `--context-file`
+
+Example:
+
+```powershell
+.\collector-cli.bat execute `
+  --provider-id aws `
+  --plan-file .\plan.json `
+  --context-file .\provider-context.json `
+  > .\run-summary.json
+```
+
+Using stdin:
+
+```powershell
+Get-Content .\plan.json | .\collector-cli.bat execute `
+  --provider-id aws `
+  --plan-stdin `
+  --context-file .\provider-context.json
+```
+
+Get help:
+
+```powershell
+.\collector-cli.bat execute --help
+```
+
+---
+
+## `snapshot`
+
+Rebuilds a provider snapshot from stored run data.
+
+Example:
+
+```powershell
+.\collector-cli.bat snapshot --run-id 12345
+```
+
+Get help:
+
+```powershell
+.\collector-cli.bat snapshot --help
+```
+
+---
+
+## `providers`
+
+Lists loaded cloud providers as JSON.
+
+Example:
+
+```powershell
+.\collector-cli.bat providers
+```
+
+Example output:
+
+```json
+[
+  {
+    "id": "aws",
+    "version": "1.0.0",
+    "name": "Amazon Web Services",
+    "attributes": {}
+  }
+]
+```
+
+---
+
+## `collectors`
+
+Lists collectors for a provider as JSON.
+
+Example:
+
+```powershell
+.\collector-cli.bat collectors --provider-id aws
+```
+
+Example output:
+
+```json
+[
+  {
+    "providerId": "aws",
+    "entityType": "Vpc",
+    "requiresEntityTypes": [],
+    "tags": ["aws", "network"]
+  }
+]
+```
+
+---
+
+## Input File Examples
+
+This section shows the common JSON inputs consumed by the CLI and ultimately fed into `Main.java`.
+
+## 1. Scope file
+
+A scope file is typically used by `plan`.
+
+**File:** `scope.json`
 
 ```json
 {
   "provider": "aws",
   "attributes": {
+    "profile": "dev",
     "region": "us-east-1"
   }
 }
 ```
 
-**Example – Unix (bash/zsh):**
-
-```bash
-# Plan for AWS EC2 instances in a single region, writing to plan.json
-./collector-cli plan \
-  --provider-id aws \
-  --scope-file scope.json \
-  --provider-arg profile=dev \
-  --target-types EC2Instance \
-  --output plan.json
-```
-
-**Example – Windows PowerShell:**
+Example use:
 
 ```powershell
-# Plan for AWS EC2 instances in a single region, writing to plan.json
-./collector-cli.bat plan `
+.\collector-cli.bat plan `
   --provider-id aws `
-  --scope-file scope.json `
-  --provider-arg profile=dev `
-  --target-types EC2Instance `
-  --output plan.json
-```
-
-**Using multiple `--provider-arg` values:**
-
-```bash
-./collector-cli plan \
-  --provider-id aws \
-  --provider-arg profile=dev \
-  --provider-arg region=us-east-1 \
-  --output plan.json
+  --scope-file .\scope.json `
+  --output .\plan.json
 ```
 
 ---
 
-## `execute` Command
+## 2. Provider context file
 
-Executes a collection plan and writes a `CollectionRunSummary` as JSON.
+A provider context file is typically used by `execute`.  
+It is an optional json file that supplies runtime configuration and credentials-related context for the provider.
 
-**Options:**
-
-- `-p, --provider-id <ID>` (required) – must match `plan.providerId`.
-- `-f, --plan-file <FILE>` – JSON file containing a `CollectionPlan`.
-- `--plan-stdin` – read `CollectionPlan` JSON from stdin.
-- `-c, --context-file <FILE>` – JSON file containing `ProviderContext` (credentials, config).
-- `-h, --help` – show command help.
-
-Exactly one of `--plan-file` or `--plan-stdin` must be specified.
-
-**Example – Execute from plan file (Unix):**
-
-```bash
-./collector-cli execute \
-  --provider-id aws \
-  --plan-file plan.json \
-  --context-file context.json > run-summary.json
-```
-
-**Example – Execute from plan file (PowerShell):**
-
-```powershell
-./collector-cli.bat execute `
-  --provider-id aws `
-  --plan-file plan.json `
-  --context-file context.json `
-  > run-summary.json
-```
-
-**Example – Execute using stdin (Unix):**
-
-```bash
-cat plan.json | ./collector-cli execute \
-  --provider-id aws \
-  --plan-stdin \
-  --context-file context.json
-```
-
----
-
-## `snapshot` Command
-
-Rebuilds a provider snapshot for an existing collection run using the stored run and result data in the local H2 database.
-
-**Options:**
-
-- `-r, --run-id <ID>` (required) – run identifier to snapshot.
-- `-h, --help` – show command help.
-
-The snapshot builder reads all `CollectionResult` records for the specified run id and merges them into a provider snapshot. The exact output (files, directories) is determined by the configured `SnapshotBuilder` implementation.
-
-**Example – Unix:**
-
-```bash
-./collector-cli snapshot --run-id 12345
-```
-
-**Example – PowerShell:**
-
-```powershell
-./collector-cli.bat snapshot --run-id 12345
-```
-
----
-
-## `providers` Command
-
-Lists all loaded cloud providers from the engine as JSON.
-
-Each provider entry has the shape:
+**File:** `provider-context.json`
 
 ```json
 {
-  "id": "aws",
-  "version": "1.0.0",
-  "name": "Amazon Web Services",
   "attributes": {
-    "someKey": "someValue"
+    "profile": "dev",
+    "region": "us-east-1",
+    "roleArn": "arn:aws:iam::123456789012:role/EstoriaReadOnly"
   }
 }
 ```
 
-**Examples – Unix:**
-
-```bash
-./collector-cli providers
-```
-
-**Examples – PowerShell:**
+Example use:
 
 ```powershell
-./collector-cli.bat providers
+.\collector-cli.bat execute `
+  --provider-id aws `
+  --plan-file .\plan.json `
+  --context-file .\provider-context.json
 ```
+
+> In most environments, credentials should come from the AWS SDK default chain, shared config, environment variables, or an assumed role. Avoid storing long-lived secrets in this file.
 
 ---
 
-## `collectors` Command
+## 3. Plan file
 
-Lists all collectors for a specific provider as JSON.
+A plan file is generated by the `plan` command and consumed by `execute`.
 
-**Options:**
+**File:** `plan.json`
 
-- `-p, --provider-id <ID>` (required) – provider identifier.
-- `-h, --help` – show command help.
+> The JSON structure of this file is the serialized form of
+> `io.coherity.estoria.collector.engine.api.CollectionPlan`.
+> Because the exact shape is defined by the engine API and may evolve over time,
+> this file should normally be generated by the CLI rather than authored manually.
 
-Each collector entry has the shape:
+Example generation:
+
+```powershell
+.\collector-cli.bat plan `
+  --provider-id aws `
+  --scope-file .\scope.json `
+  --target-types Vpc,Subnet,CloudWatchLogGroup `
+  --output .\plan.json
+```
+
+Example execution:
+
+```powershell
+.\collector-cli.bat execute `
+  --provider-id aws `
+  --plan-file .\plan.json `
+  --context-file .\provider-context.json
+```
+
+To inspect the exact structure for your current build:
+
+```powershell
+Get-Content .\plan.json
+```
+
+Or pretty-print it in PowerShell:
+
+```powershell
+Get-Content .\plan.json | ConvertFrom-Json | ConvertTo-Json -Depth 20
+```
+
+> The exact generated shape may include additional fields depending on the engine version. Prefer generating this file through `plan` instead of maintaining it by hand.
+
+---
+
+## 4. Type-set file
+
+If your CLI build supports planning from a type-set file, this JSON file defines a reusable group of entity types. This helps you build re-usable entity sets for targeted purposes (ex: networking, monitoring, etc.)
+
+**File:** `monitoring-typeset.json`
 
 ```json
 {
-  "providerId": "aws",
-  "entityType": "EC2Instance",
-  "requiresEntityTypes": ["Vpc", "Subnet"],
-  "tags": ["aws", "compute"]
+  "typesetId": "aws-monitoring",
+  "displayName": "AWS Monitoring",
+  "description": "AWS monitoring, logging, tracing, and audit entity types",
+  "version": "1.0.0",
+  "entityTypes": [
+    "CloudWatchLogGroup",
+    "CloudWatchLogStream",
+    "CloudWatchMetricAlarm",
+    "CloudWatchCompositeAlarm",
+    "CloudWatchDashboard",
+    "CloudTrailTrail",
+    "CloudTrailEventDataStore",
+    "XRayGroup",
+    "XRaySamplingRule",
+    "XRayEncryptionConfig"
+  ]
 }
 ```
 
-**Example – Unix:**
-
-```bash
-./collector-cli collectors --provider-id aws
-```
-
-**Example – PowerShell:**
+If supported by your build, the planning command will accept the corresponding CLI option shown by:
 
 ```powershell
-./collector-cli.bat collectors --provider-id aws
+.\collector-cli.bat plan --help
 ```
 
 ---
 
-## Logging Configuration
+## 5. Run summary output
 
-The launcher scripts add the `conf/` directory to the Java classpath. To configure Log4j2, place a `log4j2.xml` file in `conf/` (as shipped in this distribution or your customized version). When you run `collector-cli`, Log4j2 will automatically load `conf/log4j2.xml` if present.
+The `execute` command writes a run summary to stdout unless redirected.
+
+**File:** `run-summary.json`
+
+```json
+{
+  "runId": 12345,
+  "providerId": "aws",
+  "status": "COMPLETED",
+  "resultCount": 3,
+  "failureCount": 0
+}
+```
+
+Example capture:
+
+```powershell
+.\collector-cli.bat execute `
+  --provider-id aws `
+  --plan-file .\plan.json `
+  --context-file .\provider-context.json `
+  > .\run-summary.json
+```
 
 ---
 
-## Exit Codes (Summary)
+## Example End-to-End AWS Flow
 
-- `0` – success.
-- `1` – command-specific validation or usage error (e.g., missing required option, bad combination of options).
-- `2` – generic command-line parsing error at the top level.
-- `3` – unexpected exception during command execution.
+### Files
 
-Use these exit codes in scripts or automation to detect and handle failures appropriately.
+**`scope.json`**
+```json
+{
+  "provider": "aws",
+  "attributes": {
+    "profile": "dev",
+    "region": "us-east-1"
+  }
+}
+```
+
+**`provider-context.json`**
+```json
+{
+  "attributes": {
+    "profile": "dev",
+    "region": "us-east-1"
+  }
+}
+```
+
+### Commands
+
+```powershell
+.\collector-cli.bat plan `
+  --provider-id aws `
+  --scope-file .\scope.json `
+  --target-types CloudTrailTrail,CloudWatchLogGroup `
+  --output .\plan.json
+```
+
+```powershell
+.\collector-cli.bat execute `
+  --provider-id aws `
+  --plan-file .\plan.json `
+  --context-file .\provider-context.json `
+  > .\run-summary.json
+```
+
+```powershell
+.\collector-cli.bat snapshot --run-id 12345
+```
+
+---
+
+## Logging
+
+The launch scripts add `conf/` to the classpath.  
+To customize logging, place `log4j2.xml` in `conf/`.
+
+Example location:
+
+```text
+conf\log4j2.xml
+```
+
+---
+
+## Exit Codes
+
+- `0` - success
+- `1` - validation or usage error
+- `2` - top-level command-line parsing error
+- `3` - unexpected runtime exception
+
+---
+
+## Notes
+
+- Use `--help` on each command for the exact options supported by the current build.
+- Prefer generating plan files with `plan` rather than editing them manually.
+- Prefer AWS shared configuration, environment variables, or role assumption over embedding secrets in JSON files.
+- When a command writes JSON to stdout, redirect it to a file with `>` if needed.
+
+
+
+
+
+
+## Example Usage
+
+>aws sso login --profile nonprod
+
+>.\estoria-collector.bat providers --pretty
+
+>.\estoria-collector.bat collectors --provider-id aws --pretty
+
+>.\estoria-collector.bat collector-args --provider-id aws --pretty
+
+>.\estoria-collector.bat plan --provider-id aws --collector-arg include-reference=false --pretty
+>.\estoria-collector.bat plan --provider-id aws --collector-arg include-reference=false --type-set-file typesets/network-typeset.json -o testplan.json --pretty
+
+>.\estoria-collector.bat collect --provider-id aws -f testplan.json --provider-arg profile=nonprod --provider-arg region=us-east-2 --pretty
+
+>.\estoria-collector.bat collection --run-id 605b7ee9-c083-4d46-ab9d-92b743066071 --pretty
+
+>.\estoria-collector.bat collection --run-id 605b7ee9-c083-4d46-ab9d-92b74306607 -o example-run.json --pretty
+
+
+
+
