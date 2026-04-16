@@ -37,14 +37,8 @@ jobs:
     - name: Make Maven wrapper executable
       run: chmod +x ./mvnw
         
-    - name: Run tests
-      run: ./mvnw -s .github/workflows/ci-settings.xml test
-      env:
-        MAVEN_USERNAME: ${{ github.actor }}
-        MAVEN_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
-      
-    - name: Build application
-      run: ./mvnw -s .github/workflows/ci-settings.xml clean package -DskipTests
+    - name: Build and test
+      run: ./mvnw -U -s .github/workflows/ci-settings.xml clean verify
       env:
         MAVEN_USERNAME: ${{ github.actor }}
         MAVEN_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
@@ -93,7 +87,7 @@ jobs:
         path: target/
         
     - name: Publish JAR to GitHub Packages
-      run: ./mvnw -s .github/workflows/ci-settings.xml deploy -DskipTests
+      run: ./mvnw -U -s .github/workflows/ci-settings.xml deploy -DskipTests
       env:
         MAVEN_USERNAME: ${{ github.actor }}
         MAVEN_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
