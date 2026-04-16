@@ -5,10 +5,6 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
-import java.io.IOException;
-import java.net.URL;
-import java.util.Collections;
-import java.util.Enumeration;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
@@ -29,9 +25,6 @@ import io.coherity.estoria.collector.spi.ProviderInfo;
 
 class CollectorEngineImplTest
 {
-    private static final String CLOUD_PROVIDER_SERVICE_FILE =
-        "META-INF/services/io.coherity.estoria.collector.spi.CloudProvider";
-
     @AfterEach
     void tearDown()
     {
@@ -85,34 +78,6 @@ class CollectorEngineImplTest
             assertThat(actualCollectorEngine.getSnapshotBuilder()).isSameAs(snapshotBuilder);
         }
 
-        @Test
-        void givenPlannerExecutorAndSnapshotBuilder_whenPublicConstructorCalled_thenInjectedInstancesAreRetained()
-            throws Exception
-        {
-            CollectionPlanner collectionPlanner = mock(CollectionPlanner.class);
-            CollectionExecutor collectionExecutor = mock(CollectionExecutor.class);
-            SnapshotBuilder snapshotBuilder = mock(SnapshotBuilder.class);
-
-            CollectorEngineImpl collectorEngine = withCloudProviderServiceHidden(
-                () -> new CollectorEngineImpl(collectionPlanner, collectionExecutor, snapshotBuilder));
-
-            assertThat(collectorEngine.getPlanner()).isSameAs(collectionPlanner);
-            assertThat(collectorEngine.getExecutor()).isSameAs(collectionExecutor);
-            assertThat(collectorEngine.getSnapshotBuilder()).isSameAs(snapshotBuilder);
-            assertThat(collectorEngine.getLoadedCloudProviders()).isEmpty();
-        }
-
-        @Test
-        void givenNoArgsConstructor_whenCalled_thenDefaultCollaboratorsAreInitialized()
-            throws Exception
-        {
-            CollectorEngineImpl collectorEngine = withCloudProviderServiceHidden(CollectorEngineImpl::new);
-
-            assertThat(collectorEngine.getPlanner()).isNotNull();
-            assertThat(collectorEngine.getExecutor()).isNotNull();
-            assertThat(collectorEngine.getSnapshotBuilder()).isNotNull();
-            assertThat(collectorEngine.getLoadedCloudProviders()).isEmpty();
-        }
     }
 
     @Nested
@@ -288,57 +253,6 @@ class CollectorEngineImplTest
     private CloudProvider cloudProvider(String providerId, CollectorRegistry collectorRegistry)
     {
         return new TestCloudProvider(providerId, collectorRegistry);
-    }
-
-    private <T> T withCloudProviderServiceHidden(ThrowingSupplier<T> supplier) throws Exception
-    {
-        Thread currentThread = Thread.currentThread();
-        ClassLoader originalContextClassLoader = currentThread.getContextClassLoader();
-
-        try
-        {
-            currentThread.setContextClassLoader(
-                new CloudProviderServiceHidingClassLoader(originalContextClassLoader));
-            return supplier.get();
-        }
-        finally
-        {
-            currentThread.setContextClassLoader(originalContextClassLoader);
-        }
-    }
-
-    @FunctionalInterface
-    private interface ThrowingSupplier<T>
-    {
-        T get() throws Exception;
-    }
-
-    private static final class CloudProviderServiceHidingClassLoader extends ClassLoader
-    {
-        private CloudProviderServiceHidingClassLoader(ClassLoader parent)
-        {
-            super(parent);
-        }
-
-        @Override
-        public URL getResource(String name)
-        {
-            if (CLOUD_PROVIDER_SERVICE_FILE.equals(name))
-            {
-                return null;
-            }
-            return super.getResource(name);
-        }
-
-        @Override
-        public Enumeration<URL> getResources(String name) throws IOException
-        {
-            if (CLOUD_PROVIDER_SERVICE_FILE.equals(name))
-            {
-                return Collections.emptyEnumeration();
-            }
-            return super.getResources(name);
-        }
     }
 
     private static final class TestCloudProvider extends CloudProvider

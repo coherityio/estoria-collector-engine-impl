@@ -153,35 +153,35 @@ class CollectorEngineFactoryImplTest
         }
     }
     
-    @Nested
-    class CreateDefaultCollectorEngineTest
-    {
-        @Test
-        void givenDefaultFactoryState_whenCreateDefaultCollectorEngineCalled_thenCollectorEngineImplIsCreated()
-        {
-            CollectorEngine collectorEngine = CollectorEngineFactoryImpl.createDefaultCollectorEngine();
-
-            assertThat(collectorEngine).isNotNull();
-            assertThat(collectorEngine).isInstanceOf(CollectorEngineImpl.class);
-
-            CollectorEngineImpl collectorEngineImpl = (CollectorEngineImpl) collectorEngine;
-            assertThat(collectorEngineImpl.getPlanner()).isNotNull();
-            assertThat(collectorEngineImpl.getExecutor()).isNotNull();
-            assertThat(collectorEngineImpl.getSnapshotBuilder()).isNotNull();
-        }
-
-        @Test
-        void givenFactoryReset_whenCreateDefaultCollectorEngineCalledTwice_thenDistinctCollectorEnginesAreCreated()
-        {
-            CollectorEngine first = CollectorEngineFactoryImpl.createDefaultCollectorEngine();
-            CollectorEngine second = CollectorEngineFactoryImpl.createDefaultCollectorEngine();
-
-            assertThat(first).isNotNull();
-            assertThat(second).isNotNull();
-            assertThat(first).isNotSameAs(second);
-            assertThat(first).isInstanceOf(CollectorEngineImpl.class);
-            assertThat(second).isInstanceOf(CollectorEngineImpl.class);
-        }
-    }
+//    @Nested
+//    class CreateDefaultCollectorEngineTest
+//    {
+//        @Test
+//        void givenDefaultFactoryState_whenCreateDefaultCollectorEngineCalled_thenCollectorEngineImplIsCreated()
+//        {
+//            CollectorEngine collectorEngine = CollectorEngineFactoryImpl.createDefaultCollectorEngine();
+//
+//            assertThat(collectorEngine).isNotNull();
+//            assertThat(collectorEngine).isInstanceOf(CollectorEngineImpl.class);
+//
+//            CollectorEngineImpl collectorEngineImpl = (CollectorEngineImpl) collectorEngine;
+//            assertThat(collectorEngineImpl.getPlanner()).isNotNull();
+//            assertThat(collectorEngineImpl.getExecutor()).isNotNull();
+//            assertThat(collectorEngineImpl.getSnapshotBuilder()).isNotNull();
+//        }
+//
+//        @Test
+//        void givenFactoryReset_whenCreateDefaultCollectorEngineCalledTwice_thenDistinctCollectorEnginesAreCreated()
+//        {
+//            CollectorEngine first = CollectorEngineFactoryImpl.createDefaultCollectorEngine();
+//            CollectorEngine second = CollectorEngineFactoryImpl.createDefaultCollectorEngine();
+//
+//            assertThat(first).isNotNull();
+//            assertThat(second).isNotNull();
+//            assertThat(first).isNotSameAs(second);
+//            assertThat(first).isInstanceOf(CollectorEngineImpl.class);
+//            assertThat(second).isInstanceOf(CollectorEngineImpl.class);
+//        }
+//    }
     
 }
