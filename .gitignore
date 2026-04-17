@@ -217,3 +217,11 @@ gradle-app.setting
 **/build/
 
 # End of https://www.gitignore.io/api/java,gradle,maven,eclipse,intellij
+
+
+# allow this path chain
+!src/
+!src/main/
+!src/main/dist/
+!src/main/dist/bin/
+!src/main/dist/bin/**
